@@ -1,0 +1,84 @@
+<div id="overlay" class="overlay active">
+    <div class="confirm-box">
+        <h2 style="color: red;">WARNING: This action is irreversible!</h2>
+        <h3>Once you proceed, you are solely responsible for broadcasting the signed exit message.</h3>
+        
+        <hr style="border: 1px solid #333; margin-bottom: 1rem; margin-top: 2rem;">
+        <h3 style="padding-bottom: 1em;">Validator Details:</h3>
+        <p style="margin-bottom: 1rem;">Index: {{ .ValidatorIndex }}</p>
+        <p style="margin-bottom: 1rem;">Public Key: {{ .PubKey }}</p>
+
+        <hr style="border: 1px solid #333; margin-bottom: 1rem; margin-top: 2rem;">   
+        <div style="position: relative; display: inline-block;">
+            <h3 style="padding-bottom: 1em">Exit Message JSON:</h3>
+            <pre id="exitMsg" class="confirm-output" style="margin: 0; padding: 1em; border: 1px solid #ddd; border-radius: 4px;">
+<code>{
+"message": {
+    "epoch": "{{ .Epoch }}",
+    "validator_index": "{{ .ValidatorIndex }}"
+},
+"signature": "{{ .Signature }}"
+}</code></pre>
+            <p style="padding-top: 1rem;">Your validator's exit message has been signed. Please review the details below carefully. 
+            <p style="padding-bottom: 0.25rem;">When you're ready, click the link to broadcast the message on the designated page.</p>
+        </div>
+        
+        <div class="confirm-action" style="display: flex; gap: 5rem;">
+            <!-- Copy Button -->
+            <button 
+                onclick="copyExitMsg()" 
+                title="Copy to Clipboard" 
+                class="button-htmx-action small"
+                style="flex: 1; text-align: center;">
+                <span style="margin-right: 4px;">Copy</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+                    <path fill-rule="evenodd" clip-rule="evenodd" d="M19.5 16.5L19.5 4.5L18.75 3.75H9L8.25 4.5L8.25 7.5L5.25 7.5L4.5 8.25V20.25L5.25 21H15L15.75 20.25V17.25H18.75L19.5 16.5ZM15.75 15.75L15.75 8.25L15 7.5L9.75 7.5V5.25L18 5.25V15.75H15.75ZM6 9L14.25 9L14.25 19.5L6 19.5L6 9Z"/>
+                </svg>
+            </button>
+        
+            <!-- Broadcast Message Button -->
+            <a 
+                class="button-htmx-action small"
+                href="https://{{if eq .NetworkId 17000}}holesky.{{end}}beaconcha.in/tools/broadcast"
+                target="_blank"
+                style="flex: 1; text-align: center;"
+            >
+                Broadcast Message
+                <!-- External Link Icon -->
+                <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    fill="none" 
+                    stroke="currentColor"
+                    stroke-width="2" 
+                    stroke-linecap="round" 
+                    stroke-linejoin="round"
+                    width="14" 
+                    height="14" 
+                    viewBox="0 0 24 24"
+                    style="vertical-align: middle; margin-left: 4px;"
+                >
+                    <path d="M7 17l9-9M7 8h9v9"/>
+                </svg>
+            </a>  
+        
+            <!-- Close Button -->
+            <a 
+                class="button-htmx-action small"
+                onclick="document.getElementById('overlay').classList.remove('active')"
+                style="flex: 1; text-align: center;"
+            >
+                Close
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+function copyExitMsg() {
+        const text = document.querySelector('#exitMsg code').innerText;
+        navigator.clipboard.writeText(text).then(() => {
+        }).catch(err => {
+            console.error('Failed to copy: ', err);
+        });
+    }
+</script>

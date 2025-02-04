@@ -1,0 +1,106 @@
+<div>
+    <h2 style="padding-bottom: 1rem;">Node Wallet: {{.NodeAddress}}</h2>
+    <!-- Table of Validators -->
+    <table>
+        <thead>
+        <tr>
+            <th>Number</th>
+            <th>Index</th>
+            <th>Validator Public Key</th>
+            <th>Minipool Address</th>
+            <th>Status</th>
+            <th>Action</th>
+        </tr>
+        </thead>
+        <tbody>
+        <!-- Capture NetworkId outside of the range -->
+        {{ $networkId := .NetworkId }}            
+        {{range .Validators}}
+        <tr>
+            <td>{{.Number}}</td>
+            <td>
+            <a href="https://{{if eq $networkId 17000}}holesky.{{end}}beaconcha.in/validator/{{.Index}}" target="_blank">
+                {{.Index}}
+                <!-- External link icon -->
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    class="ext-link"
+                    >
+                <path d="M7 17l9-9M7 8h9v9"/>
+                </svg>
+            </a>
+            </td>
+            <td>
+            <a href="https://{{if eq $networkId 17000}}holesky.{{end}}beaconcha.in/validator/{{.PubKey}}" target="_blank">
+                {{.PubKey}}
+                <!-- External link icon -->
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    class="ext-link"
+                    >
+                <path d="M7 17l9-9M7 8h9v9"/>
+                </svg>
+            </a>
+            </td>
+            <td>
+            <a href="https://{{if eq $networkId 17000}}holesky.{{end}}etherscan.io/address/{{.MinipoolAddress}}" target="_blank">
+                {{.MinipoolAddress}}
+                <!-- External link icon -->
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    class="ext-link"
+                    >
+                <path d="M7 17l9-9M7 8h9v9"/>
+                </svg>
+            </a>
+            </td>
+            <td>{{.Status}}</td>
+            <td>
+            <!-- "Sign Exit" Button -->
+            {{ if or (eq .Status "active_online") (eq .Status "active_offline") }}
+            <div>
+                <a 
+                    class="button-htmx-action small"
+                    hx-post="/validator/signExit"
+                    hx-include="#network-select"
+                    hx-vals='{"validatorIndex": "{{.Index}}", "privateKey": "{{.PrivateKey}}"}'
+                    hx-target="#overlay"
+                    hx-swap="outerHTML"
+                >
+                    Sign Exit
+                </a>
+            </div>
+            {{ end }}
+            </td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+
+    <!-- Empty container for the overlay returned by the server -->
+    <div id="overlay"></div>
+</div>

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Just Exit My Validators</title>
+    <!-- Include htmx -->
+    <script src="https://unpkg.com/htmx.org@1.9.3"></script>
+    <link href="https://fonts.googleapis.com/css?family=Roboto+Mono&display=swap" rel="stylesheet">
+    <style>
+        /* Reset and base styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            background-color: #1f1f1f;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            padding: 1rem;
+            margin: 0;
+        }
+
+        header {
+            background-color: #1f1f1f;
+            color: #fff;
+            border-bottom: 2px solid #f05a28;
+            padding: 0.5rem;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+        }
+        nav a {
+            color: #f05a28;
+            text-decoration: none;
+            margin-left: 1rem;
+            font-size: 1rem;
+            display: inline-flex;
+            align-items: center;
+            position: relative;
+        }
+        nav a:visited {
+            color: #f05a28;
+        }
+
+        main {
+            flex: 1;
+            padding: 1rem;
+        }
+
+        footer {
+            background-color: #1f1f1f;
+            color: #fff;
+            border-top: 2px solid #f05a28;
+            text-align: center;
+            padding: 0.5rem;
+        }
+
+        /* Headings */
+        h1 {
+            margin-bottom: 1rem;
+            font-size: 2rem;
+        }
+
+        /* FAQ sections */
+        .faq-section {
+            margin-bottom: 2rem;
+        }
+        .faq-section h2 {
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+        }
+        .faq-section p {
+            margin-bottom: 1rem;
+            line-height: 1.5;
+        }
+
+        /* button style */
+        .button-htmx-action {
+            display: inline-block;
+            padding: 12px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            color: #ffffff;
+            background-color: #f05a28;
+        }
+        .button-htmx-action:hover {
+            background-color: #d94d24; /* Slightly darker on hover */
+        }
+
+        .button-htmx-action.small {
+            padding: 8px 12px !important;
+            font-size: 14px !important;
+        }
+
+        .select{
+            width: 100px;
+            text-align: center;
+            margin-right: 15px;
+            background-color: #1f1f1f;
+            color: #f05a28;
+            border: 1px solid #f05a28;
+            padding: 4px;
+            border-radius: 4px;
+        }
+
+        /* Form container */
+        form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 1.5rem;
+        }
+
+        /* Textarea styling */
+        form textarea {
+            width: 80%;
+            max-width: 600px;
+            min-height: 120px;
+            padding: 12px;
+            margin-bottom: 1rem;
+            background-color: #2a2a2a;       /* Slightly lighter than the page background */
+            border: 1px solid #f05a28;       /* Accent orange border */
+            border-radius: 5px;
+            color: #ffffff;
+            font-size: 16px;
+            font-family: inherit;
+            resize: vertical;               /* Allow vertical resizing */
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        /* Focus state for better accessibility and visual feedback */
+        form textarea:focus {
+            outline: none;
+            border-color: #d94d24;          /* Slightly darker on focus */
+            box-shadow: 0 0 8px rgba(240, 90, 40, 0.5);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            font-family: 'Roboto Mono', monospace;
+            text-align: center;
+            vertical-align: middle;
+            border-bottom: 1px solid #333;
+            padding: 0.1rem;
+            height: 3rem;
+        }
+        th {
+            background-color: #2a2a2a;
+        }
+        /* Zebra striping on table rows */
+        tbody tr:nth-child(even) {
+            background-color: #2a2a2a;
+        }
+        tbody tr:nth-child(odd) {
+            background-color: #1f1f1f;
+        }
+        /* Hover effect */
+        tbody tr:hover {
+            background-color: #333;
+        }
+
+        a, a:visited {
+            color: #fff;
+            text-decoration: none;
+        }
+        .ext-link {
+            vertical-align: middle; 
+            margin-left: 2px;
+            stroke: currentColor; 
+        }        
+
+        /* Confirmation Overlay */
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.75);
+            display: none;           
+            align-items: center;   
+            justify-content: center; 
+            z-index: 9999;
+        }
+        .overlay.active {
+            display: flex;
+        }
+
+        /* Confirmation Box */
+        .confirm-box {
+            background-color: #2a2a2a;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            max-width: 60vw;
+            width: auto;
+        }
+        .confirm-box h2 {
+            margin-bottom: 1rem;
+        }
+        .confirm-box button {
+            margin: 0 10px;
+        }
+
+        .confirm-output {
+            background-color: #2a2a2a;     
+            color: #f8f8f2;               
+            padding: 1rem;                 
+            border-radius: 5px;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.9rem;
+            text-align: left;             
+            white-space: pre-wrap;
+            word-wrap: break-word;   
+            word-break: break-all;    
+            overflow-wrap: anywhere;
+            margin: 0;                     
+        }
+
+        .confirm-action {
+            margin-top: 2rem;
+            display: flex;
+            justify-content: center;
+            gap: 10rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav style="margin-right: 30px;">
+            <a href="https://github.com/0xtrooper/JustExitMyValidators" target="_blank">
+                Source
+                <!-- Inline SVG for external link icon -->
+                <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    fill="none" 
+                    stroke="currentColor"
+                    stroke-width="2" 
+                    stroke-linecap="round" 
+                    stroke-linejoin="round"
+                    width="14" 
+                    height="14" 
+                    viewBox="0 0 24 24"
+                    style="vertical-align: middle; margin-left: 4px;"
+                >
+                <path d="M7 17l9-9M7 8h9v9"/>
+                </svg>
+            </a>
+        </nav>
+        <div>
+            <select id="network-select" name="network" class="select"> 
+                <option value="mainnet" selected="selected">Mainnet</option>
+                <option value="holesky">Holesky</option>
+            </select>
+        </div>
+    </header>
+
+  <main>
+        <h1>Stake your ETH, earn rewards, &amp; help secure Ethereum</h1>
+        <p style="margin-bottom: 2rem;">
+            Below is a short FAQ about our Voluntary Validator Exit Tool.
+            The styling is inspired by Rocket Pool’s dark theme with orange highlights.
+        </p>
+
+        <!-- FAQ items -->
+        <div class="faq-section">
+            <h2>1. What does this tool do?</h2>
+            <p>
+                This tool lets node operators exit their validators using only
+                their mnemonic (no node access needed).
+            </p>
+        </div>
+        <div class="faq-section">
+            <h2>2. Why do I only need a mnemonic, without node access?</h2>
+            <p>
+                Because the tool can derive validator keys from your mnemonic
+                and sign the exit message locally, node access is unnecessary.
+            </p>
+        </div>
+        <div class="faq-section">
+            <h2>3. How does it integrate with ethdo and beaconcha.in?</h2>
+            <p>
+                The tool uses <strong>ethdo</strong> to sign exit messages and
+                the <strong>beaconcha.in</strong> API to broadcast them to the network.
+            </p>
+        </div>
+        <div class="faq-section">
+            <h2>4. Is it secure?</h2>
+            <p>
+                Security is paramount. The tool is open-source, can be locally hosted,
+                and has been designed with audits in mind to ensure trustworthiness.
+            </p>
+        </div>
+
+        <!-- "Go to /app" Button -->
+        <div style="text-align: center; margin-top: 2rem;">
+            <a 
+                class="button-htmx-action"
+                hx-get="/mnemonic"
+                hx-target="main" 
+                hx-swap="innterHTML"
+            >
+                Start Exit Process
+            </a>
+        </div>
+    </main>
+
+    <footer>
+        built by 0xtrooper
+    </footer>
+</body>
+</html>
