@@ -17,17 +17,13 @@ const (
 	holeskyRocketStorageAddressStr = "0x594Fb75D3dc2DFa0150Ad03F99F97817747dd4E1"
 )
 
-func GetContractByName(ctx context.Context, rpc *ethclient.Client, contractName string) (common.Address, error) {
-	networkId, err := rpc.NetworkID(ctx)
-	if err != nil {
-		return common.Address{}, errors.Join(errors.New("failed to get network id"), err)
-	}
+func GetContractByName(ctx context.Context, rpc *ethclient.Client, networkId uint64, contractName string) (common.Address, error) {
 
 	var rocketStorageAddressStr string
-	switch networkId.String() {
-	case "1":
+	switch networkId {
+	case 1:
 		rocketStorageAddressStr = mainnetRocketStorageAddressStr
-	case "17000":
+	case 17000:
 		rocketStorageAddressStr = holeskyRocketStorageAddressStr
 	default:
 		return common.Address{}, errors.New("unsupported network id")

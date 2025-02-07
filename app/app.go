@@ -35,7 +35,7 @@ const (
 	HOLESKY_NETWORK_ID = 17000
 
 	RPC_URL_MAINNET = "https://eth.llamarpc.com"
-	RPC_URL_HOLESKY = "https://rpc.holesky.ethpandaops.io"
+	RPC_URL_HOLESKY = "https://holesky.gateway.tenderly.co"
 )
 
 var (
@@ -303,15 +303,12 @@ func getExternalValidatorData(
 		return nil, 0, errors.New("invalid network id")
 	}
 
-	fmt.Println("would have connected to", rpcUrl, "todo overwrite this with the real rpc url after multicall is implemented")
-
-	// TODO OVERWRITE THIS WITH THE REAL RPC URL
-	rpc, err := ethclient.DialContext(ctx, "http://100.79.40.97:8555")
+	rpc, err := ethclient.DialContext(ctx, rpcUrl)
 	if err != nil {
 		return nil, 0, errors.Join(errors.New("failed to connect to ethereum rpc"), err)
 	}
 
-	mm, err := rocketpoolContracts.NewMinipoolManager(ctx, rpc)
+	mm, err := rocketpoolContracts.NewMinipoolManager(ctx, rpc, logger)
 	if err != nil {
 		return nil, 0, errors.Join(errors.New("failed to create minipool manager"), err)
 	}

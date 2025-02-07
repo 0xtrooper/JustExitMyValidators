@@ -3,9 +3,10 @@ package rocketpoolContracts
 import (
 	"context"
 	"errors"
-	"fmt"
+	"justExitMyValidators/multicall"
 	"justExitMyValidators/rocketpoolContracts/minipoolManager"
 	"justExitMyValidators/wallet"
+	"log/slog"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -15,25 +16,30 @@ import (
 )
 
 type Minipool struct {
-	Error error
-
 	Number          uint64
 	MinipoolAddress common.Address
 	ValidatorPubkey wallet.ValidatorPubkey
 }
 
 type MinipoolManagerInstance struct {
+	contractAddress  common.Address
 	contractInstance *minipoolManager.MinipoolManager
 	contractAbi      *abi.ABI
+	multiCaller      *multicall.MultiCaller
 }
 
-func NewMinipoolManager(ctx context.Context, rpc *ethclient.Client) (*MinipoolManagerInstance, error) {
-	contractAddress, err := GetContractByName(ctx, rpc, "rocketMinipoolManager")
+func NewMinipoolManager(ctx context.Context, rpc *ethclient.Client, logger *slog.Logger) (*MinipoolManagerInstance, error) {
+	networkId, err := rpc.NetworkID(ctx)
+	if err != nil {
+		return nil, errors.Join(errors.New("failed to get network id"), err)
+	}
+
+	contractAddress, err := GetContractByName(ctx, rpc, networkId.Uint64(), "rocketMinipoolManager")
 	if err != nil {
 		return nil, errors.Join(errors.New("failed to get contract address"), err)
 	}
 
-	fmt.Println("contractAddress: ", contractAddress.Hex())
+	logger.Debug("fetched minipool manger address", slog.String("minipoolManagerAddress", contractAddress.Hex()))
 
 	contractInstance, err := minipoolManager.NewMinipoolManager(contractAddress, rpc)
 	if err != nil {
@@ -45,9 +51,16 @@ func NewMinipoolManager(ctx context.Context, rpc *ethclient.Client) (*MinipoolMa
 		return nil, errors.Join(errors.New("failed to get contract abi"), err)
 	}
 
+	multiCaller, err := multicall.NewMultiCaller(rpc, int(networkId.Int64()))
+	if err != nil {
+		return nil, errors.Join(errors.New("failed to create multicaller"), err)
+	}
+
 	return &MinipoolManagerInstance{
+		contractAddress:  contractAddress,
 		contractInstance: contractInstance,
 		contractAbi:      contractAbi,
+		multiCaller:      multiCaller,
 	}, nil
 }
 
@@ -65,37 +78,55 @@ func (mm *MinipoolManagerInstance) GetMinipoolCount(ctx context.Context, nodeAdd
 }
 
 func (mm *MinipoolManagerInstance) GetMinipools(ctx context.Context, nodeAddress common.Address, start, end uint64) ([]Minipool, error) {
-	out := make([]Minipool, end-start)
 
-	opts := &bind.CallOpts{
-		Context: ctx,
-	}
+	minipoolAddresses := make([]common.Address, end-start)
 	for indexToFetch := start; indexToFetch < end; indexToFetch++ {
 		indexToStore := indexToFetch - start
-		// get minipool address
-		minipoolAddress, err := mm.contractInstance.GetNodeValidatingMinipoolAt(opts, nodeAddress, new(big.Int).SetUint64(indexToFetch))
-		if err != nil {
-			out[indexToStore] = Minipool{
-				Error: errors.Join(errors.New("failed to get minipool"), err),
-			}
-			continue
+		mm.multiCaller.AddCall(mm.contractAddress, mm.contractAbi, &minipoolAddresses[indexToStore], "getNodeValidatingMinipoolAt", nodeAddress, new(big.Int).SetUint64(indexToFetch))
+	}
+
+	callResponseArrayAddresses, err := mm.multiCaller.ExecuteAndParseCalldata(false, 0)
+	if err != nil {
+		return nil, errors.Join(errors.New("failed to execute multicall"), err)
+	}
+
+	if len(callResponseArrayAddresses) != len(minipoolAddresses) {
+		return nil, errors.New("unexpected response length")
+	}
+
+	pubKeys := make([][]byte, end-start)
+	for indexToFetch := start; indexToFetch < end; indexToFetch++ {
+		indexToStore := indexToFetch - start
+
+		if !callResponseArrayAddresses[indexToStore].Success {
+			return nil, errors.New("call failed")
 		}
 
-		// get pubkey
-		pubkey, err := mm.contractInstance.GetMinipoolPubkey(opts, minipoolAddress)
-		if err != nil {
-			out[indexToStore] = Minipool{
-				Error: errors.Join(errors.New("failed to get pubkey"), err),
-			}
-			continue
+		mm.multiCaller.AddCall(mm.contractAddress, mm.contractAbi, &pubKeys[indexToStore], "getMinipoolPubkey", minipoolAddresses[indexToStore])
+	}
+
+	callResponseArrayPubkeys, err := mm.multiCaller.ExecuteAndParseCalldata(false, 0)
+	if err != nil {
+		return nil, errors.Join(errors.New("failed to execute multicall"), err)
+	}
+
+	if len(callResponseArrayPubkeys) != len(pubKeys) {
+		return nil, errors.New("unexpected response length")
+	}
+
+	out := make([]Minipool, end-start)
+	for indexToFetch := start; indexToFetch < end; indexToFetch++ {
+		indexToStore := indexToFetch - start
+
+		if !callResponseArrayPubkeys[indexToStore].Success {
+			return nil, errors.New("call failed")
 		}
 
 		out[indexToStore] = Minipool{
 			Number:          indexToFetch + 1,
-			MinipoolAddress: minipoolAddress,
-			ValidatorPubkey: wallet.ValidatorPubkey(pubkey),
+			MinipoolAddress: minipoolAddresses[indexToStore],
+			ValidatorPubkey: wallet.ValidatorPubkey(pubKeys[indexToStore]),
 		}
-
 	}
 	return out, nil
 }
