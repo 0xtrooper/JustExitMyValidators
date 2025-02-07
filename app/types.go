@@ -1,22 +1,34 @@
 package app
 
-import "justExitMyValidators/wallet"
-
 type RecoveredNodeAddresses struct {
 	Text        string
 	NodeAddress string
 	WalletData  string
 }
 
-type MinipoolsData struct {
-	NodeAddress string
-	NetworkId   uint64
-	Validators  []wallet.ValidatorData
-}
-
 type BeaconchaValidatorStatusResponse struct {
 	Status string `json:"status"`
 	Data   []struct {
+		ActivationEligibilityEpoch uint64 `json:"activationeligibilityepoch"`
+		ActivationEpoch            uint64 `json:"activationepoch"`
+		Balance                    uint64 `json:"balance"`
+		EffectiveBalance           uint64 `json:"effectivebalance"`
+		ExitEpoch                  uint64 `json:"exitepoch"`
+		LastAttestationSlot        uint64 `json:"lastattestationslot"`
+		Name                       string `json:"name"`
+		PubKey                     string `json:"pubkey"`
+		Slashed                    bool   `json:"slashed"`
+		Status                     string `json:"status"`
+		ValidatorIndex             uint64 `json:"validatorindex"`
+		WithdrawableEpoch          uint64 `json:"withdrawableepoch"`
+		WithdrawalCredentials      string `json:"withdrawalcredentials"`
+		TotalWithdrawals           uint64 `json:"total_withdrawals"`
+	} `json:"data"`
+}
+
+type BeaconchaValidatorStatusResponseSingle struct {
+	Status string `json:"status"`
+	Data   struct {
 		ActivationEligibilityEpoch uint64 `json:"activationeligibilityepoch"`
 		ActivationEpoch            uint64 `json:"activationepoch"`
 		Balance                    uint64 `json:"balance"`

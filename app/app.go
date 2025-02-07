@@ -29,7 +29,7 @@ const (
 	HOLESKY_GENESIS_VALIDATORS_ROOT = "9143aa7c615a7f7115e2b6aac319c03529df8242ae705fba9df39b79c59fa8b1"
 	HOLESKY_CAPELLA_FORK_VERSION    = "04017000"
 
-	MinipoolPerPage = uint64(10)
+	MinipoolPerPage = uint64(15)
 
 	MAINNET_NETWORK_ID = 1
 	HOLESKY_NETWORK_ID = 17000
@@ -239,7 +239,7 @@ func (a *App) GetMinipoolsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	logger.Debug("recived network", slog.String("network", r.FormValue("network")))
 
-	validators, err := getExternalValidatorData(r.Context(), logger, startTime, networkId, nodeAddress, startIndex, endIndex)
+	validators, totalCount, err := getExternalValidatorData(r.Context(), logger, startTime, networkId, nodeAddress, startIndex, endIndex)
 	if err != nil {
 		http.Error(w, "Unable to get validators", http.StatusInternalServerError)
 		logger.Error("error getting validators", slog.String("error", err.Error()))
@@ -255,10 +255,22 @@ func (a *App) GetMinipoolsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	logger.Debug("recovered validator private keys", slog.Duration("timeElapsed", time.Since(startTime)))
 
-	data := MinipoolsData{
-		NodeAddress: nodeAddress.Hex(),
-		NetworkId:   networkId,
-		Validators:  validators,
+	outWalletJson, err := nodeKey.Json()
+	if err != nil {
+		http.Error(w, "Unable to get wallet json", http.StatusInternalServerError)
+		logger.Error("error getting wallet json", slog.String("error", err.Error()))
+		return
+	}
+
+	data := map[string]interface{}{
+		"NodeAddress":  nodeAddress.Hex(),
+		"NetworkId":    networkId,
+		"Validators":   validators,
+		"Page":         page,
+		"PreviousPage": page - 1,
+		"NextPage":     page + 1,
+		"TotalPages":   (totalCount + MinipoolPerPage - 1) / MinipoolPerPage,
+		"WalletData":   outWalletJson,
 	}
 
 	err = minipoolsTemplate.Execute(w, data)
@@ -278,7 +290,7 @@ func getExternalValidatorData(
 	nodeAddress common.Address,
 	startIndex,
 	endIndex uint64,
-) ([]wallet.ValidatorData, error) {
+) ([]wallet.ValidatorData, uint64, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -292,7 +304,7 @@ func getExternalValidatorData(
 		rpcUrl = RPC_URL_HOLESKY
 		beaconchaUrl = "https://holesky.beaconcha.in/api/v1/"
 	default:
-		return nil, errors.New("invalid network id")
+		return nil, 0, errors.New("invalid network id")
 	}
 
 	fmt.Println("would have connected to", rpcUrl, "todo overwrite this with the real rpc url after multicall is implemented")
@@ -300,30 +312,34 @@ func getExternalValidatorData(
 	// TODO OVERWRITE THIS WITH THE REAL RPC URL
 	rpc, err := ethclient.DialContext(ctx, "http://100.79.40.97:8555")
 	if err != nil {
-		return nil, errors.Join(errors.New("failed to connect to ethereum rpc"), err)
+		return nil, 0, errors.Join(errors.New("failed to connect to ethereum rpc"), err)
 	}
 
 	mm, err := rocketpoolContracts.NewMinipoolManager(ctx, rpc)
 	if err != nil {
-		return nil, errors.Join(errors.New("failed to create minipool manager"), err)
+		return nil, 0, errors.Join(errors.New("failed to create minipool manager"), err)
 	}
 
 	totalCount, err := mm.GetMinipoolCount(ctx, nodeAddress)
 	if err != nil {
-		return nil, errors.Join(errors.New("failed to get minipool count"), err)
+		return nil, totalCount, errors.Join(errors.New("failed to get minipool count"), err)
 	}
-	logger.Debug("fetched minipool count", slog.Uint64("totalCount", totalCount), slog.Duration("timeElapsed", time.Since(startTime)))
+	// maxIndex := totalCount - 1
+	logger.Debug("fetched minipool count",
+		slog.Uint64("totalCount", totalCount),
+		slog.Duration("timeElapsed", time.Since(startTime)),
+	)
 
-	if startIndex > totalCount-1 {
-		startIndex = totalCount - 1
+	if startIndex > totalCount {
+		startIndex = totalCount
 	}
-	if endIndex > totalCount-1 {
-		endIndex = totalCount - 1
+	if endIndex > totalCount {
+		endIndex = totalCount
 	}
 
 	minipools, err := mm.GetMinipools(ctx, nodeAddress, startIndex, endIndex)
 	if err != nil {
-		return nil, errors.Join(errors.New("failed to get minipools"), err)
+		return nil, totalCount, errors.Join(errors.New("failed to get minipools"), err)
 	}
 	logger.Debug("fetched minipools", slog.Int("count", len(minipools)), slog.Duration("timeElapsed", time.Since(startTime)))
 
@@ -343,44 +359,67 @@ func getExternalValidatorData(
 
 	// get validator data from beaconchain
 	url := fmt.Sprintf("%svalidator/%s", beaconchaUrl, strings.Join(validatorsPubKeys, ","))
+	loggerWithUrl := logger.With("url", url)
 	resp, err := http.Get(url)
 	if err != nil {
-		return nil, errors.Join(errors.New("failed to get validators data"), err)
+		loggerWithUrl.Error("failed to get validators data", slog.String("error", err.Error()))
+		return nil, totalCount, errors.Join(errors.New("failed to get validators data"), err)
 	}
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		logger.Error("failed to get validators data", slog.String("status", resp.Status))
-		return nil, errors.New("failed to get validators data")
+		loggerWithUrl.Error("failed to get validators data", slog.String("status", resp.Status))
+		return nil, totalCount, errors.New("failed to get validators data")
 	}
 
-	var beaconchaResponse BeaconchaValidatorStatusResponse
-	if err := json.NewDecoder(resp.Body).Decode(&beaconchaResponse); err != nil {
-		return nil, errors.Join(errors.New("failed to decode validators data"), err)
-	}
+	// decode response based on the number of validators
+	// for some reason the single validator response is different from the multiple validators response
+	if len(validatorsPubKeys) == 1 {
+		var beaconchaResponseSingle BeaconchaValidatorStatusResponseSingle
+		if err := json.NewDecoder(resp.Body).Decode(&beaconchaResponseSingle); err != nil {
+			loggerWithUrl.Error("failed to decode validators data", slog.String("error", err.Error()))
+			return nil, totalCount, errors.Join(errors.New("failed to decode validators data"), err)
+		}
 
-	if beaconchaResponse.Status != "OK" {
-		return nil, fmt.Errorf("beaconchain response status is not OK: %s", beaconchaResponse.Status)
-	}
-	logger.Debug("fetched validators data", slog.Int("count", len(beaconchaResponse.Data)), slog.Duration("timeElapsed", time.Since(startTime)))
+		if beaconchaResponseSingle.Status != "OK" {
+			loggerWithUrl.Error("beaconchain response status is not OK", slog.String("status", beaconchaResponseSingle.Status))
+			return nil, totalCount, fmt.Errorf("beaconchain response status is not OK: %s", beaconchaResponseSingle.Status)
+		}
+		loggerWithUrl.Debug("fetched validators data", slog.Int("count", 1), slog.Duration("timeElapsed", time.Since(startTime)))
 
-	if len(minipools) != len(beaconchaResponse.Data) {
-		return nil, errors.New("invalid response from beaconchain, wrong length")
-	}
+		validators[0].Index = beaconchaResponseSingle.Data.ValidatorIndex
+		validators[0].Status = beaconchaResponseSingle.Data.Status
+	} else {
+		var beaconchaResponse BeaconchaValidatorStatusResponse
+		if err := json.NewDecoder(resp.Body).Decode(&beaconchaResponse); err != nil {
+			loggerWithUrl.Error("failed to decode validators data", slog.String("error", err.Error()))
+			return nil, totalCount, errors.Join(errors.New("failed to decode validators data"), err)
+		}
 
-	// matching beaconchain data with minipools
-	// seperating this from the above loop in case the order does not match
-	for _, validator := range beaconchaResponse.Data {
-		for i, minipool := range minipools {
-			if strings.EqualFold(minipool.ValidatorPubkey.String(), validator.PubKey) {
-				validators[i].Index = validator.ValidatorIndex
-				validators[i].Status = validator.Status
-				break
+		if beaconchaResponse.Status != "OK" {
+			loggerWithUrl.Error("beaconchain response status is not OK", slog.String("status", beaconchaResponse.Status))
+			return nil, totalCount, fmt.Errorf("beaconchain response status is not OK: %s", beaconchaResponse.Status)
+		}
+		loggerWithUrl.Debug("fetched validators data", slog.Int("count", len(beaconchaResponse.Data)), slog.Duration("timeElapsed", time.Since(startTime)))
+
+		if len(minipools) != len(beaconchaResponse.Data) {
+			return nil, totalCount, errors.New("invalid response from beaconchain, wrong length")
+		}
+
+		// matching beaconchain data with minipools
+		// seperating this from the above loop in case the order does not match
+		for _, validator := range beaconchaResponse.Data {
+			for i, minipool := range minipools {
+				if strings.EqualFold(minipool.ValidatorPubkey.String(), validator.PubKey) {
+					validators[i].Index = validator.ValidatorIndex
+					validators[i].Status = validator.Status
+					break
+				}
 			}
 		}
 	}
 
-	return validators, nil
+	return validators, totalCount, nil
 }
 
 func (a *App) GetSignExitHandler(w http.ResponseWriter, r *http.Request) {

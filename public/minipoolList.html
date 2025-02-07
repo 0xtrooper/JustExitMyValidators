@@ -103,4 +103,42 @@
 
     <!-- Empty container for the overlay returned by the server -->
     <div id="overlay"></div>
+
+    <!-- Pagination UI Element -->
+    {{ if gt .TotalPages 1 }}
+    <div class="pagination" style="margin-top: 1rem; text-align: center;">
+        {{ if gt .PreviousPage 0 }}
+            <button 
+                class="button-htmx-action small"
+                hx-post="/minipools?page={{ .PreviousPage }}"
+                hx-vals="{{ .WalletData }}"
+                hx-include="#network-select"
+                hx-target="main" 
+                hx-swap="innerHTML"
+            >
+                Previous
+            </button>
+        {{ else }}
+            <button disabled class="button-htmx-action small disabled">Previous</button>
+        {{ end }}
+
+        <span style="margin: 0 1rem;">Page {{.Page}} of {{.TotalPages}}</span>
+
+        {{/* Show the "Next" button only if there are more pages */}}
+        {{ if or (lt .NextPage .TotalPages) (eq .NextPage .TotalPages) }}
+            <button 
+                class="button-htmx-action small"
+                hx-post="/minipools?page={{ .NextPage }}"
+                hx-vals="{{ .WalletData }}"
+                hx-include="#network-select"
+                hx-target="main" 
+                hx-swap="innerHTML"
+            >
+                Next
+            </button>
+        {{ else }}
+            <button disabled class="button-htmx-action small disabled">Next</button>
+        {{ end }}
+    </div>
+    {{ end }}
 </div>
