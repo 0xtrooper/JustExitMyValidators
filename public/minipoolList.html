@@ -101,9 +101,6 @@
         </tbody>
     </table>
 
-    <!-- Empty container for the overlay returned by the server -->
-    <div id="overlay"></div>
-
     <!-- Pagination UI Element -->
     {{ if gt .TotalPages 1 }}
     <div class="pagination" style="margin-top: 1rem; text-align: center;">
@@ -141,4 +138,7 @@
         {{ end }}
     </div>
     {{ end }}
+
+    <!-- Empty container for the overlay returned by the server -->
+    <div id="overlay"></div>
 </div>

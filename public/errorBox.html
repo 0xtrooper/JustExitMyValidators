@@ -1,0 +1,24 @@
+<div id="error-box" class="error-box" style="
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: #E3F2FD;
+    border: 1px solid #90CAF9;
+    color: #1565C0;
+    padding: 2rem;
+    min-width: 20rem;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+">
+    <h2 style="margin: 0 0 0.5rem 0;">Error</h2>
+    <p style="margin: 0 0 1rem 0;">{{ if .ErrorMsg }}{{ .ErrorMsg }}{{ else }}An unexpected error has occurred.{{ end }}</p>
+    <div style="text-align: right;">
+        <a href="#"
+           class="button-htmx-action small"
+           onclick="document.getElementById('error-box').style.display='none'; return false;"
+        >
+            Close
+        </a>
+    </div>
+</div>

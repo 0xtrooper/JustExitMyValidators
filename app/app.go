@@ -40,6 +40,7 @@ const (
 
 var (
 	indexTemplate               = template.Must(template.ParseFiles("public/index.html"))
+	errorTemplate               = template.Must(template.ParseFiles("public/errorBox.html"))
 	inputMnemonicTemplate       = template.Must(template.ParseFiles("public/mnemonic.html"))
 	minipoolsTemplate           = template.Must(template.ParseFiles("public/minipoolList.html"))
 	confirmationOverlayTemplate = template.Must(template.ParseFiles("public/confirmationOverlay.html"))
@@ -84,7 +85,8 @@ func (a *App) SubmitMnemonicHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Parse the form data
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Unable to parse form data", http.StatusBadRequest)
+		logger.Error("error parsing form data", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Unable to parse form data")
 		return
 	}
 
@@ -97,82 +99,74 @@ func (a *App) SubmitMnemonicHandler(w http.ResponseWriter, r *http.Request) {
 	logger.Debug("recived mnemonic", slog.String("mnemonic", mnemonic))
 
 	if mnemonic == "" {
-		data := map[string]string{
-			"errorMsg": "Mnemonic is required",
-		}
-		err := inputMnemonicTemplate.Execute(w, data)
-		if err != nil {
-			logger.Error("error rendering", slog.String("error", err.Error()))
-		}
+		logger.Error("error no mnemonic")
+		returnErrorBox(w, r, logger, "Mnemonic is required")
 		return
 	}
 
-	wallet, err := wallet.NewWallet(mnemonic, derivationPath, 0)
+	walletInstance, err := wallet.NewWallet(mnemonic, derivationPath, 0)
 	if err != nil {
-		data := map[string]string{
-			"errorMsg":        err.Error(),
-			"enteredMnemonic": mnemonic,
-		}
 		logger.Error("error creating wallet", slog.String("error", err.Error()))
-		err = inputMnemonicTemplate.Execute(w, data)
-		if err != nil {
-			logger.Error("error rendering", slog.String("error", err.Error()))
+		if errors.Is(err, wallet.ErrInvalidWordCount) {
+			returnErrorBox(w, r, logger, wallet.ErrInvalidWordCount.Error())
+		} else {
+			returnErrorBox(w, r, logger, "Wrong mnemonic")
 		}
 		return
 	}
 
 	var recoveredNodeAddresses []RecoveredNodeAddresses
-	if wallet.CustomKey != nil {
-		recoveryData, err := wallet.DefaultNodeKey.Json()
+	if walletInstance.CustomKey != nil {
+		recoveryData, err := walletInstance.DefaultNodeKey.Json()
 		if err != nil {
 			logger.Warn("error getting default node key json", slog.String("error", err.Error()))
 			recoveryData = ""
 		}
 		recoveredNodeAddresses = append(recoveredNodeAddresses, RecoveredNodeAddresses{
 			Text:        "Recovered node address using custom derivation path",
-			NodeAddress: wallet.CustomKey.Address().Hex(),
+			NodeAddress: walletInstance.CustomKey.Address().Hex(),
 			WalletData:  recoveryData,
 		})
 		logger.Info("mnemonic correct",
-			slog.String("nodeAddressCustom", wallet.CustomKey.Address().Hex()),
+			slog.String("nodeAddressCustom", walletInstance.CustomKey.Address().Hex()),
 		)
 	} else {
-		recoveryData, err := wallet.DefaultNodeKey.Json()
+		recoveryData, err := walletInstance.DefaultNodeKey.Json()
 		if err != nil {
 			logger.Warn("error getting default node key json", slog.String("error", err.Error()))
 			recoveryData = ""
 		}
 		recoveredNodeAddresses = append(recoveredNodeAddresses, RecoveredNodeAddresses{
 			Text:        "Recovered node address using smart node derivation path",
-			NodeAddress: wallet.DefaultNodeKey.Address().Hex(),
+			NodeAddress: walletInstance.DefaultNodeKey.Address().Hex(),
 			WalletData:  recoveryData,
 		})
 
-		recoveryData, err = wallet.DefaultNodeKey.Json()
+		recoveryData, err = walletInstance.DefaultNodeKey.Json()
 		if err != nil {
 			logger.Warn("error getting default node key json", slog.String("error", err.Error()))
 			recoveryData = ""
 		}
 		recoveredNodeAddresses = append(recoveredNodeAddresses, RecoveredNodeAddresses{
 			Text:        "Recovered node address using leder derivation path",
-			NodeAddress: wallet.LedgerLiveNodeKey.Address().Hex(),
+			NodeAddress: walletInstance.LedgerLiveNodeKey.Address().Hex(),
 			WalletData:  recoveryData,
 		})
 
-		recoveryData, err = wallet.DefaultNodeKey.Json()
+		recoveryData, err = walletInstance.DefaultNodeKey.Json()
 		if err != nil {
 			logger.Warn("error getting default node key json", slog.String("error", err.Error()))
 			recoveryData = ""
 		}
 		recoveredNodeAddresses = append(recoveredNodeAddresses, RecoveredNodeAddresses{
 			Text:        "Recovered node address using my ether wallet derivation path",
-			NodeAddress: wallet.MyEtherWalletNodeKey.Address().Hex(),
+			NodeAddress: walletInstance.MyEtherWalletNodeKey.Address().Hex(),
 			WalletData:  recoveryData,
 		})
 		logger.Info("mnemonic correct",
-			slog.String("nodeAddressDefault", wallet.DefaultNodeKey.Address().Hex()),
-			slog.String("nodeAddressLedger", wallet.LedgerLiveNodeKey.Address().Hex()),
-			slog.String("nodeAddressMyEtherWallet", wallet.MyEtherWalletNodeKey.Address().Hex()),
+			slog.String("nodeAddressDefault", walletInstance.DefaultNodeKey.Address().Hex()),
+			slog.String("nodeAddressLedger", walletInstance.LedgerLiveNodeKey.Address().Hex()),
+			slog.String("nodeAddressMyEtherWallet", walletInstance.MyEtherWalletNodeKey.Address().Hex()),
 		)
 	}
 
@@ -192,7 +186,8 @@ func (a *App) GetMinipoolsHandler(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Unable to parse form data", http.StatusBadRequest)
+		logger.Error("error parsing form data", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "invalid form data")
 		return
 	}
 
@@ -201,8 +196,8 @@ func (a *App) GetMinipoolsHandler(w http.ResponseWriter, r *http.Request) {
 
 	nodeKey, err := wallet.NewNodeKeyFromJson(walletJson)
 	if err != nil {
-		http.Error(w, "Invalid wallet data", http.StatusBadRequest)
 		logger.Error("error creating node key from json", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Invalid wallet data")
 		return
 	}
 
@@ -217,8 +212,8 @@ func (a *App) GetMinipoolsHandler(w http.ResponseWriter, r *http.Request) {
 		var err error
 		pageInt64, err := strconv.ParseInt(pageStr, 10, 64)
 		if err != nil {
-			http.Error(w, "Invalid page", http.StatusBadRequest)
 			logger.Error("error parsing page", slog.String("error", err.Error()))
+			returnErrorBox(w, r, logger, "Invalid page")
 			return
 		}
 		page = uint64(pageInt64)
@@ -234,31 +229,32 @@ func (a *App) GetMinipoolsHandler(w http.ResponseWriter, r *http.Request) {
 	case "holesky":
 		networkId = HOLESKY_NETWORK_ID
 	default:
-		http.Error(w, "Invalid netowrk id", http.StatusBadRequest)
+		logger.Error("error parsing page", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Invalid network, only mainnet and holesky are supported")
 		return
 	}
 	logger.Debug("recived network", slog.String("network", r.FormValue("network")))
 
 	validators, totalCount, err := getExternalValidatorData(r.Context(), logger, startTime, networkId, nodeAddress, startIndex, endIndex)
 	if err != nil {
-		http.Error(w, "Unable to get validators", http.StatusInternalServerError)
 		logger.Error("error getting validators", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Unable to get validators")
 		return
 	}
 	logger.Debug("fetched validators", slog.Int("count", len(validators)), slog.Duration("timeElapsed", time.Since(startTime)))
 
 	err = nodeKey.RecoverValidatorPrivateKeys(validators)
 	if err != nil {
-		http.Error(w, "Unable to recover validator private keys", http.StatusInternalServerError)
 		logger.Error("error recovering validator private keys", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Unable to recover validator private keys")
 		return
 	}
 	logger.Debug("recovered validator private keys", slog.Duration("timeElapsed", time.Since(startTime)))
 
 	outWalletJson, err := nodeKey.Json()
 	if err != nil {
-		http.Error(w, "Unable to get wallet json", http.StatusInternalServerError)
 		logger.Error("error getting wallet json", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Unable to get wallet json")
 		return
 	}
 
@@ -275,8 +271,8 @@ func (a *App) GetMinipoolsHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = minipoolsTemplate.Execute(w, data)
 	if err != nil {
-		http.Error(w, "Unable to render minipools", http.StatusInternalServerError)
 		logger.Error("error rendering minipools", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Unable to render minipools")
 		return
 	}
 	logger.Info("minipools fetched", slog.Duration("timeElapsed", time.Since(startTime)))
@@ -427,7 +423,8 @@ func (a *App) GetSignExitHandler(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Unable to parse form data", http.StatusBadRequest)
+		logger.Error("error parsing form data", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Unable to parse form data")
 		return
 	}
 
@@ -438,50 +435,53 @@ func (a *App) GetSignExitHandler(w http.ResponseWriter, r *http.Request) {
 	case "holesky":
 		networkId = HOLESKY_NETWORK_ID
 	default:
-		http.Error(w, "Invalid netowrk id", http.StatusBadRequest)
+		logger.Error("invalid netowrk id", slog.String("requested", r.FormValue("network")))
+		returnErrorBox(w, r, logger, "Invalid netowrk id, only mainnet and holesky are supported")
 		return
 	}
 	logger.Debug("recived network", slog.String("network", r.FormValue("network")))
 
 	validatorKeyStr := r.FormValue("privateKey")
 	if validatorKeyStr == "" {
-		http.Error(w, "Private key is required", http.StatusBadRequest)
+		logger.Error("error missing private key")
+		returnErrorBox(w, r, logger, "Private key is required")
 		return
 	}
 
 	validatorKeyBytes, err := hex.DecodeString(validatorKeyStr)
 	if err != nil {
-		http.Error(w, "Invalid private key", http.StatusBadRequest)
 		logger.Error("error decoding private key", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Validator key is incorrectly formated")
 		return
 	}
 
 	validatorKey, err := eth2types.BLSPrivateKeyFromBytes(validatorKeyBytes)
 	if err != nil {
-		http.Error(w, "Invalid private key", http.StatusBadRequest)
 		logger.Error("error converting private key", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Invalid private key")
 		return
 	}
 	logger.Debug("recived private key", slog.String("validatorKeyStr", validatorKeyStr))
 
 	validatorIndexStr := r.FormValue("validatorIndex")
 	if validatorIndexStr == "" {
-		http.Error(w, "Validator index is required", http.StatusBadRequest)
+		logger.Error("error missing validator index")
+		returnErrorBox(w, r, logger, "Validator index is required")
 		return
 	}
 
 	epoch, err := getCurrentEpoch(r.Context(), logger, networkId)
 	if err != nil {
-		http.Error(w, "Unable to get current epoch", http.StatusInternalServerError)
 		logger.Error("error getting current epoch", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Unable to get current epoch")
 		return
 	}
 	logger.Debug("using current epoch", slog.Uint64("epoch", epoch), slog.Duration("timeElapsed", time.Since(startTime)))
 
 	signatureDomain, err := getValidatorExitDomain(logger, networkId)
 	if err != nil {
-		http.Error(w, "Unable to get signature domain", http.StatusInternalServerError)
-		a.logger.Error("error getting signature domain", slog.String("error", err.Error()))
+		logger.Error("error getting signature domain", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Unable to get signature domain")
 		return
 	}
 
@@ -493,8 +493,8 @@ func (a *App) GetSignExitHandler(w http.ResponseWriter, r *http.Request) {
 	// use: https://github.com/rocket-pool/node-manager-core/blob/dfd914e4e77be54fbbf4ebb8e47d7578146bf429/node/validator/voluntary-exit.go#L13
 	signature, err := nmc_validator.GetSignedExitMessage(validatorKey, validatorIndexStr, epoch, signatureDomain)
 	if err != nil {
-		http.Error(w, "Unable to sign exit message", http.StatusInternalServerError)
 		logger.Error("error signing exit message", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Unable to sign exit message")
 		return
 	}
 
@@ -512,8 +512,8 @@ func (a *App) GetSignExitHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = confirmationOverlayTemplate.Execute(w, data)
 	if err != nil {
-		http.Error(w, "Unable to render confirmation overlay", http.StatusInternalServerError)
 		logger.Error("error rendering confirmation overlay", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Unable to render confirmation overlay")
 		return
 	}
 	logger.Info("signature generated", slog.Duration("timeElapsed", time.Since(startTime)))
@@ -589,4 +589,15 @@ func getValidatorExitDomain(logger *slog.Logger, networkId uint64) ([]byte, erro
 	copy(dt[:], eth2types.DomainVoluntaryExit[:])
 
 	return eth2types.ComputeDomain(dt, forkVersion, genesisValidatorsRoot)
+}
+
+func returnErrorBox(w http.ResponseWriter, r *http.Request, logger *slog.Logger, errMsg string) {
+	w.Header().Set("hx-retarget", "#error-box")
+	w.Header().Set("hx-reswap", "outerHTML")
+	err := errorTemplate.Execute(w, map[string]string{
+		"ErrorMsg": errMsg,
+	})
+	if err != nil {
+		logger.Error("error rendering", slog.String("error", err.Error()))
+	}
 }

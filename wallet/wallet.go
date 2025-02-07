@@ -22,6 +22,10 @@ const (
 	LedgerLiveNodeKeyPath    = "m/44'/60'/%d/0/0"
 )
 
+var (
+	ErrInvalidWordCount = errors.New("mnemonic must be 12, 15, 18, 21 or 24 words")
+)
+
 type NodeRecoveryData struct {
 	Seed           []byte `json:"seed"`
 	DerivationPath string `json:"derivation_path"`
@@ -164,7 +168,7 @@ func NewWallet(mnemonic string, derivationPath string, index uint) (*WalletInsta
 	mnemonic = strings.TrimSpace(mnemonic)
 	numOfWords := len(strings.Fields(mnemonic))
 	if numOfWords%3 != 0 || numOfWords < 12 || numOfWords > 24 {
-		return nil, errors.New("mnemonic must be 12, 15, 18, 21 or 24 words")
+		return nil, ErrInvalidWordCount
 	}
 
 	// check if mnemonic is valid
