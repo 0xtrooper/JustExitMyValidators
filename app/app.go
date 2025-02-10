@@ -218,24 +218,37 @@ func (a *App) GetMinipoolsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		page = uint64(pageInt64)
 	}
-	startIndex := (page - 1) * MinipoolPerPage
-	endIndex := startIndex + MinipoolPerPage
-	logger.Debug("recived page", slog.Uint64("page", page), slog.Uint64("startIndex", startIndex), slog.Uint64("endIndex", endIndex))
+	logger.Debug("recived page", slog.Uint64("page", page))
 
 	var networkId uint64
+	var beaconchainUrl string
 	switch r.FormValue("network") {
 	case "mainnet":
 		networkId = MAINNET_NETWORK_ID
+		beaconchainUrl = "https://beaconcha.in/api/v1/"
 	case "holesky":
 		networkId = HOLESKY_NETWORK_ID
+		beaconchainUrl = "https://holesky.beaconcha.in/api/v1/"
 	default:
 		logger.Error("error parsing page", slog.String("error", err.Error()))
 		returnErrorBox(w, r, logger, "Invalid network, only mainnet and holesky are supported")
 		return
 	}
-	logger.Debug("recived network", slog.String("network", r.FormValue("network")))
+	logger.Debug("recived network", slog.String("network", r.FormValue("network")), slog.Uint64("networkId", networkId))
 
-	validators, totalCount, err := getExternalValidatorData(r.Context(), logger, startTime, networkId, nodeAddress, startIndex, endIndex)
+	rpc, err := getRPC(logger, r.FormValue("rpc"), networkId)
+	if err != nil {
+		logger.Error("error connecting to RPC", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, err.Error())
+		return
+	}
+
+	beaconchainApiKey := r.FormValue("beaconchainApiKey")
+	if beaconchainApiKey != "" {
+		logger.Debug("recived beaconchain api key", slog.String("beaconchainApiKey", beaconchainApiKey))
+	}
+
+	validators, totalCount, err := getExternalValidatorData(r.Context(), logger, startTime, rpc, beaconchainUrl, page, nodeAddress, beaconchainApiKey)
 	if err != nil {
 		logger.Error("error getting validators", slog.String("error", err.Error()))
 		returnErrorBox(w, r, logger, "Unable to get validators")
@@ -282,31 +295,18 @@ func getExternalValidatorData(
 	ctx context.Context,
 	logger *slog.Logger,
 	startTime time.Time,
-	networkId uint64,
+	rpc *ethclient.Client,
+	beaconchainUrl string,
+	page uint64,
 	nodeAddress common.Address,
-	startIndex,
-	endIndex uint64,
+	beaconchainApiKey string,
 ) ([]wallet.ValidatorData, uint64, error) {
+	startIndex := (page - 1) * MinipoolPerPage
+	endIndex := startIndex + MinipoolPerPage
+	logger.Debug("recived page", slog.Uint64("page", page), slog.Uint64("startIndex", startIndex), slog.Uint64("endIndex", endIndex))
+
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-
-	var rpcUrl string
-	var beaconchaUrl string
-	switch networkId {
-	case MAINNET_NETWORK_ID:
-		rpcUrl = RPC_URL_MAINNET
-		beaconchaUrl = "https://beaconcha.in/api/v1/"
-	case HOLESKY_NETWORK_ID:
-		rpcUrl = RPC_URL_HOLESKY
-		beaconchaUrl = "https://holesky.beaconcha.in/api/v1/"
-	default:
-		return nil, 0, errors.New("invalid network id")
-	}
-
-	rpc, err := ethclient.DialContext(ctx, rpcUrl)
-	if err != nil {
-		return nil, 0, errors.Join(errors.New("failed to connect to ethereum rpc"), err)
-	}
 
 	mm, err := rocketpoolContracts.NewMinipoolManager(ctx, rpc, logger)
 	if err != nil {
@@ -351,7 +351,10 @@ func getExternalValidatorData(
 	}
 
 	// get validator data from beaconchain
-	url := fmt.Sprintf("%svalidator/%s", beaconchaUrl, strings.Join(validatorsPubKeys, ","))
+	url := fmt.Sprintf("%svalidator/%s", beaconchainUrl, strings.Join(validatorsPubKeys, ","))
+	if beaconchainApiKey != "" {
+		url += "?apikey=" + beaconchainApiKey
+	}
 	loggerWithUrl := logger.With("url", url)
 	resp, err := http.Get(url)
 	if err != nil {
@@ -426,17 +429,20 @@ func (a *App) GetSignExitHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var networkId uint64
+	var beaconchainUrl string
 	switch r.FormValue("network") {
 	case "mainnet":
 		networkId = MAINNET_NETWORK_ID
+		beaconchainUrl = "https://beaconcha.in/api/v1/epoch/latest"
 	case "holesky":
 		networkId = HOLESKY_NETWORK_ID
+		beaconchainUrl = "https://holesky.beaconcha.in/api/v1/epoch/latest"
 	default:
 		logger.Error("invalid netowrk id", slog.String("requested", r.FormValue("network")))
 		returnErrorBox(w, r, logger, "Invalid netowrk id, only mainnet and holesky are supported")
 		return
 	}
-	logger.Debug("recived network", slog.String("network", r.FormValue("network")))
+	logger.Debug("recived network", slog.String("network", r.FormValue("network")), slog.Uint64("networkId", networkId))
 
 	validatorKeyStr := r.FormValue("privateKey")
 	if validatorKeyStr == "" {
@@ -467,7 +473,13 @@ func (a *App) GetSignExitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	epoch, err := getCurrentEpoch(r.Context(), logger, networkId)
+	beaconchainApiKey := r.FormValue("beaconchainApiKey")
+	if beaconchainApiKey != "" {
+		logger.Debug("recived beaconchain api key", slog.String("beaconchainApiKey", beaconchainApiKey))
+		beaconchainUrl += "?apikey=" + beaconchainApiKey
+	}
+
+	epoch, err := getCurrentEpoch(r.Context(), logger, beaconchainUrl)
 	if err != nil {
 		logger.Error("error getting current epoch", slog.String("error", err.Error()))
 		returnErrorBox(w, r, logger, "Unable to get current epoch")
@@ -516,19 +528,9 @@ func (a *App) GetSignExitHandler(w http.ResponseWriter, r *http.Request) {
 	logger.Info("signature generated", slog.Duration("timeElapsed", time.Since(startTime)))
 }
 
-func getCurrentEpoch(ctx context.Context, logger *slog.Logger, networkId uint64) (uint64, error) {
-	var beaconchaUrl string
-	switch networkId {
-	case MAINNET_NETWORK_ID:
-		beaconchaUrl = "https://beaconcha.in/api/v1/epoch/latest"
-	case HOLESKY_NETWORK_ID:
-		beaconchaUrl = "https://holesky.beaconcha.in/api/v1/epoch/latest"
-	default:
-		return 0, errors.New("invalid network id")
-	}
-
+func getCurrentEpoch(ctx context.Context, logger *slog.Logger, url string) (uint64, error) {
 	// get validator data from beaconchain
-	resp, err := http.Get(beaconchaUrl)
+	resp, err := http.Get(url)
 	if err != nil {
 		return 0, errors.Join(errors.New("failed to get validators data"), err)
 	}
@@ -597,4 +599,42 @@ func returnErrorBox(w http.ResponseWriter, r *http.Request, logger *slog.Logger,
 	if err != nil {
 		logger.Error("error rendering", slog.String("error", err.Error()))
 	}
+}
+
+func getRPC(logger *slog.Logger, customRPC string, networkId uint64) (*ethclient.Client, error) {
+	var rpcUrl string
+	switch {
+	case customRPC != "":
+		rpcUrl = customRPC
+	case networkId == MAINNET_NETWORK_ID:
+		rpcUrl = RPC_URL_MAINNET
+	case networkId == HOLESKY_NETWORK_ID:
+		rpcUrl = RPC_URL_HOLESKY
+	default:
+		return nil, errors.New("invalid network id")
+	}
+
+	rpc, err := ethclient.Dial(rpcUrl)
+	if err != nil {
+		logger.Error("error connecting to RPC", slog.String("error", err.Error()))
+		return nil, errors.New("failed to connect to custom RPC")
+	}
+
+	if customRPC != "" {
+		customRpcNetworkId, err := rpc.NetworkID(context.Background())
+		if err != nil {
+			logger.Error("error connecting to RPC", slog.String("error", err.Error()))
+			return nil, errors.New("failed to connect to custom RPC")
+		}
+
+		if customRpcNetworkId.Uint64() != networkId {
+			logger.Error("error custom rpc for the wrong network", slog.Uint64("networkId", customRpcNetworkId.Uint64()))
+			return nil, errors.New("custom RPC is for the wrong network")
+		}
+
+		logger.Info("connected to custom RPC", slog.String("rpcUrl", rpcUrl))
+	} else {
+		logger.Info("connected to default RPC", slog.String("rpcUrl", rpcUrl))
+	}
+	return rpc, nil
 }

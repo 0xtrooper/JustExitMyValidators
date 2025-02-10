@@ -32,7 +32,7 @@
             class="button-htmx-action"
             hx-post="/minipools?page=1"
             hx-vals="{{ .WalletData }}"
-            hx-include="#network-select"
+            hx-include="#network-select, #rpc-input, #beaconchain-api-key-input"
             hx-target="main" 
             hx-swap="innerHTML"
         >

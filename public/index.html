@@ -37,15 +37,24 @@
             justify-content: flex-end;
             align-items: center;
         }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+        }
+
+        nav {
+            margin-right: 30px;
+        }
+
         nav a {
             color: #f05a28;
             text-decoration: none;
-            margin-left: 1rem;
             font-size: 1rem;
             display: inline-flex;
             align-items: center;
-            position: relative;
         }
+
         nav a:visited {
             color: #f05a28;
         }
@@ -73,16 +82,17 @@
         .faq-section {
             margin-bottom: 2rem;
         }
+
         .faq-section h2 {
             font-size: 1.3rem;
             margin-bottom: 0.5rem;
         }
+
         .faq-section p {
             margin-bottom: 1rem;
             line-height: 1.5;
         }
 
-        /* button style */
         .button-htmx-action {
             display: inline-block;
             padding: 12px 20px;
@@ -94,14 +104,16 @@
             color: #ffffff;
             background-color: #f05a28;
         }
+
         .button-htmx-action:hover {
-            background-color: #d94d24; /* Slightly darker on hover */
+            background-color: #d94d24;
         }
 
         .button-htmx-action.small {
             padding: 8px 12px !important;
             font-size: 14px !important;
         }
+
         .button-htmx-action.disabled {
             background-color: #cccccc;
             cursor: not-allowed;
@@ -109,7 +121,7 @@
             pointer-events: none;
         }
 
-        .select{
+        .select {
             width: 100px;
             text-align: center;
             margin-right: 15px;
@@ -135,20 +147,19 @@
             min-height: 120px;
             padding: 12px;
             margin-bottom: 1rem;
-            background-color: #2a2a2a;       /* Slightly lighter than the page background */
-            border: 1px solid #f05a28;       /* Accent orange border */
+            background-color: #2a2a2a;
+            border: 1px solid #f05a28;
             border-radius: 5px;
             color: #ffffff;
             font-size: 16px;
             font-family: inherit;
-            resize: vertical;               /* Allow vertical resizing */
+            resize: vertical;
             transition: border-color 0.3s ease, box-shadow 0.3s ease;
         }
 
-        /* Focus state for better accessibility and visual feedback */
         form textarea:focus {
             outline: none;
-            border-color: #d94d24;          /* Slightly darker on focus */
+            border-color: #d94d24;
             box-shadow: 0 0 8px rgba(240, 90, 40, 0.5);
         }
 
@@ -156,6 +167,7 @@
             width: 100%;
             border-collapse: collapse;
         }
+
         th, td {
             font-family: 'Roboto Mono', monospace;
             text-align: center;
@@ -164,17 +176,19 @@
             padding: 0.1rem;
             height: 2.75rem;
         }
+
         th {
             background-color: #2a2a2a;
         }
-        /* Zebra striping on table rows */
+
         tbody tr:nth-child(even) {
             background-color: #2a2a2a;
         }
+
         tbody tr:nth-child(odd) {
             background-color: #1f1f1f;
         }
-        /* Hover effect */
+
         tbody tr:hover {
             background-color: #333;
         }
@@ -183,13 +197,13 @@
             color: #fff;
             text-decoration: none;
         }
-        .ext-link {
-            vertical-align: middle; 
-            margin-left: 2px;
-            stroke: currentColor; 
-        }        
 
-        /* Confirmation Overlay */
+        .ext-link {
+            vertical-align: middle;
+            margin-left: 2px;
+            stroke: currentColor;
+        }
+
         .overlay {
             position: fixed;
             top: 0;
@@ -202,11 +216,11 @@
             justify-content: center; 
             z-index: 9999;
         }
+
         .overlay.active {
             display: flex;
         }
-
-        /* Confirmation Box */
+        
         .confirm-box {
             background-color: #2a2a2a;
             border-radius: 8px;
@@ -243,11 +257,70 @@
             justify-content: center;
             gap: 10rem;
         }
+
+        .settings-dropdown {
+            position: fixed;
+            top: 80px;      
+            right: 30px;    
+            background-color: #2a2a2a;
+            border: 1px solid #f05a28;
+            border-radius: 5px;
+            padding: 1rem;
+            display: none;
+            z-index: 1000;
+            min-width: 250px;
+        }
+
+        .settings-dropdown.active {
+            display: block;
+        }
+
+        .settings-dropdown label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .settings-dropdown input {
+            width: 100%;
+            padding: 6px;
+            margin-bottom: 1rem;
+            background-color: #1f1f1f;
+            border: 1px solid #f05a28;
+            border-radius: 4px;
+            color: #fff;
+        }
+
+        .settings-dropdown button {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            background-color: #f05a28;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        .settings-dropdown button:hover {
+            background-color: #d94d24;
+        }
+
+        #settings-button {
+            background: none;
+            border: none;
+            color: #f05a28;
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        #settings-button svg {
+            width: 20px;
+            height: 20px;
+        }
     </style>
 </head>
 <body>
     <header>
-        <nav style="margin-right: 30px;">
+        <nav>
             <a href="https://github.com/0xtrooper/JustExitMyValidators" target="_blank">
                 Source
                 <!-- Inline SVG for external link icon -->
@@ -263,19 +336,43 @@
                     viewBox="0 0 24 24"
                     style="vertical-align: middle; margin-left: 4px;"
                 >
-                <path d="M7 17l9-9M7 8h9v9"/>
+                    <path d="M7 17l9-9M7 8h9v9"/>
                 </svg>
             </a>
         </nav>
-        <div>
-            <select id="network-select" name="network" class="select"> 
+        <div class="header-right">
+            <select id="network-select" name="network" class="select">
                 <option value="mainnet" selected="selected">Mainnet</option>
                 <option value="holesky">Holesky</option>
             </select>
+            <button id="settings-button" title="Settings">
+                <!-- Inline SVG for cogwheel icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" 
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l0 0a1.65 1.65 0 0 1-2.34 0l0 0a1.65 1.65 0 0 0-1.82-.33
+                        1.65 1.65 0 0 0-1 1.51V21a1.65 1.65 0 0 1-3.3 0v-0.49a1.65 1.65 0 0 0-1-1.51 
+                        1.65 1.65 0 0 0-1.82.33l0 0a1.65 1.65 0 0 1-2.34 0l0 0a1.65 1.65 0 0 1 0-2.34l0 0a1.65 1.65 0 0 0 
+                        .33-1.82 1.65 1.65 0 0 0-1.51-1H3a1.65 1.65 0 0 1 0-3.3h0.49a1.65 1.65 0 0 0 1.51-1 
+                        1.65 1.65 0 0 0-.33-1.82l0 0a1.65 1.65 0 0 1 0-2.34l0 0a1.65 1.65 0 0 1 2.34 0l0 0a1.65 1.65 0 0 0 
+                        1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a1.65 1.65 0 0 1 3.3 0v0.49a1.65 1.65 0 0 0 1 1.51 
+                        1.65 1.65 0 0 0 1.82-.33l0 0a1.65 1.65 0 0 1 2.34 0l0 0a1.65 1.65 0 0 1 0 2.34l0 0a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a1.65 1.65 0 0 1 0 3.3h-0.49a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+            </button>
         </div>
     </header>
 
-  <main>
+    <!-- Settings dropdown is placed outside the main so it is not affected by htmx swaps -->
+    <div class="settings-dropdown" id="settings-dropdown">
+        <form id="settings-form" onsubmit="return false;">
+            <label for="rpc-input">RPC:</label>
+            <input type="text" id="rpc-input" name="rpc" placeholder="Enter RPC URL">
+            <label for="api-key-input">beaconcha.in API key:</label>
+            <input type="text" id="beaconchain-api-key-input" name="beaconchainApiKey" placeholder="Enter API key">
+        </form>
+    </div>
+
+    <main>
         <h1>Stake your ETH, earn rewards, &amp; help secure Ethereum</h1>
         <p style="margin-bottom: 2rem;">
             Below is a short FAQ about our Voluntary Validator Exit Tool.
@@ -325,11 +422,18 @@
         </div>
     </main>
 
-    <!-- Empty container for an error msg returned by the server -->
+    <!-- Container for potential error messages -->
     <div id="error-box"></div>
 
     <footer>
         built by 0xtrooper
     </footer>
+
+    <!-- Toggle the settings dropdown -->
+    <script>
+        document.getElementById('settings-button').addEventListener('click', function() {
+            document.getElementById('settings-dropdown').classList.toggle('active');
+        });
+    </script>
 </body>
 </html>
