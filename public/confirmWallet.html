@@ -1,0 +1,36 @@
+<div id="confirm-wallet-body">
+    <!-- "Submit" Button -->
+    <div style="min-height: 80px; text-align: center; margin-top: 2rem;">        
+        <a 
+            class="button-htmx-action"
+            hx-post="/mnemonic/submit"
+            hx-include="#mnemonic, #custom-wallet-index, #custom-derivation-path"
+            hx-target="#confirm-wallet-body" 
+            hx-swap="outerHTML"
+        >
+        {{ if .recoveredNodeAddresses}}Update{{ else }}Submit{{ end }} Mnemonic
+        </a>
+    </div>
+
+    <!-- Confirm derivationPath based on node address -->
+    {{ if .recoveredNodeAddresses}}
+        <h3 style="text-align: center; padding-bottom: 1rem;">Pick the correct node address:</h3>
+    {{ end }}
+    {{range .recoveredNodeAddresses}}
+    <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 1rem; padding: 0.5rem;">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; vertical-align: middle; margin-right: 1rem; font-size: 16px;">
+            <span>{{.Text}}: {{ .NodeAddress }}</span>
+        </div>
+        <a 
+            class="button-htmx-action"
+            hx-post="/minipools?page=1"
+            hx-vals="{{ .WalletData }}"
+            hx-include="#network-select, #rpc-input, #beaconchain-api-key-input"
+            hx-target="main" 
+            hx-swap="innerHTML"
+        >
+            Confirm Node Address
+        </a>
+    </div>
+    {{end}}
+</div>

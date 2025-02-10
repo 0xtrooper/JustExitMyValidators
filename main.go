@@ -17,7 +17,6 @@ func setupRoutes(logger *slog.Logger) (*http.ServeMux, error) {
 	mux.Handle("/mnemonic/submit", http.HandlerFunc(app.SubmitMnemonicHandler))
 	mux.Handle("/minipools", http.HandlerFunc(app.GetMinipoolsHandler))
 	mux.Handle("/validator/signExit", http.HandlerFunc(app.GetSignExitHandler))
-	// var validatorPath = regexp.MustCompile("^m/12381/3600/[0-9]+/0/0$")
 
 	return mux, nil
 }

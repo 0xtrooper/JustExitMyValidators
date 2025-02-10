@@ -11,6 +11,7 @@ import (
 	"justExitMyValidators/wallet"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +45,7 @@ var (
 	inputMnemonicTemplate       = template.Must(template.ParseFiles("public/mnemonic.html"))
 	minipoolsTemplate           = template.Must(template.ParseFiles("public/minipoolList.html"))
 	confirmationOverlayTemplate = template.Must(template.ParseFiles("public/confirmationOverlay.html"))
+	confirmWalletTemplate       = template.Must(template.ParseFiles("public/confirmWallet.html"))
 )
 
 type App struct {
@@ -91,8 +93,34 @@ func (a *App) SubmitMnemonicHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract the derivationPath from the form
-	derivationPath := r.FormValue("derivationPath")
-	logger.Debug("recived custom derivationPath", slog.String("derivationPath", derivationPath))
+	derivationPath := r.FormValue("customDerivationPath")
+	if derivationPath != "" {
+		// m/44/60/123/0/0
+		// optional ': m/44'/60'/123'/0'/0'
+		// optional %d: m/44'/60'/123'/0'/%d
+		isValid := regexp.MustCompile("^m/44'?/60'?/(?:[0-9]+(?:'?)|%d)/(?:[0-9]+|%d)/(?:[0-9]+|%d)$")
+		if !isValid.MatchString(derivationPath) {
+			logger.Error("error invalid derivation path", slog.String("derivationPath", derivationPath))
+			returnErrorBox(w, r, logger, "Invalid derivation path")
+			return
+		}
+		logger.Debug("recived custom derivationPath", slog.String("derivationPath", derivationPath))
+	}
+
+	var index uint64
+	if indexStr := r.FormValue("customWalletIndex"); indexStr == "" {
+		index = 0
+		logger.Debug("using default index 0")
+	} else {
+		indexInt, err := strconv.ParseUint(indexStr, 10, 64)
+		if err != nil {
+			logger.Error("error parsing index", slog.String("error", err.Error()))
+			returnErrorBox(w, r, logger, "Invalid index")
+			return
+		}
+		index = indexInt
+		logger.Debug("recived index", slog.Uint64("index", index))
+	}
 
 	// Extract the mnemonic from the form
 	mnemonic := r.FormValue("mnemonic")
@@ -104,7 +132,7 @@ func (a *App) SubmitMnemonicHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	walletInstance, err := wallet.NewWallet(mnemonic, derivationPath, 0)
+	walletInstance, err := wallet.NewWallet(mnemonic, derivationPath, index)
 	if err != nil {
 		logger.Error("error creating wallet", slog.String("error", err.Error()))
 		if errors.Is(err, wallet.ErrInvalidWordCount) {
@@ -172,10 +200,9 @@ func (a *App) SubmitMnemonicHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := map[string]interface{}{
 		"recoveredNodeAddresses": recoveredNodeAddresses,
-		"enteredMnemonic":        mnemonic,
 	}
 
-	err = inputMnemonicTemplate.Execute(w, data)
+	err = confirmWalletTemplate.Execute(w, data)
 	if err != nil {
 		logger.Error("error rendering", slog.String("error", err.Error()))
 	}

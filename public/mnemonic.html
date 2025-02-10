@@ -1,44 +1,68 @@
 
 <div id="enter-mnemonic-body">
-    <h2 style="text-align: center;padding-bottom: 10rem;">Enter Your Mnemonic</h2>
+    <h2 style="text-align: center;padding-bottom: 1rem;">Enter Your Mnemonic</h2>
 
-    <form>
-        <textarea id="mnemonic" name="mnemonic" hx-ext="json-enc" placeholder="Enter mnemonic..." required>{{.enteredMnemonic}}</textarea>        
-    </form>
+    <div style="width: 80%; max-width: 600px; margin: 0 auto;">
+        <form style="width: 100%; padding: 0; align-items: stretch;">
+            <textarea 
+                id="mnemonic"
+                name="mnemonic"
+                style="width: 100%; box-sizing: border-box;"
+                hx-ext="json-enc"
+                placeholder="Enter mnemonic..."
+                required></textarea>        
+        </form>
+    
+        <div id="extended-settings-toggle" style="text-align: left; margin-top: 1rem; cursor: pointer; color: #f05a28;">
+            Extended Settings <span id="toggle-arrow">▼</span>
+        </div>
+        <div id="extended-settings-container" style="display: none; margin-top: 1rem; text-align: left;">
+            <div style="margin-bottom: 1rem; display: flex; align-items: baseline;">
+                <label for="wallet-index" style="margin-right: 0.5rem; white-space: nowrap;">Wallet Index:</label>
+                <input 
+                    type="number" 
+                    id="custom-wallet-index" 
+                    name="customWalletIndex" 
+                    placeholder="Enter wallet index" 
+                    style="flex: 1; box-sizing: border-box;" />                    
+            </div>
+            <div style="display: flex; align-items: baseline;">
+                <label for="custom-derivation-path" style="margin-right: 0.5rem; white-space: nowrap;">Custom Derivation Path:</label>
+                <input 
+                    type="text" 
+                    id="custom-derivation-path" 
+                    name="customDerivationPath" 
+                    placeholder="Enter custom derivation path" 
+                    style="flex: 1; box-sizing: border-box;" />
+            </div>
+        </div>
+    </div>
 
-    <!-- "Submit" Button -->
-    <div style="min-height: 80px; text-align: center; margin-top: 2rem;">        
+    <div id="submit-mnemonic" style="min-height: 80px; text-align: center; margin-top: 2rem;">        
         <a 
             class="button-htmx-action"
             hx-post="/mnemonic/submit"
-            hx-include="#mnemonic"
-            hx-target="main" 
-            hx-swap="innerHTML"
+            hx-include="#mnemonic, #custom-wallet-index, #custom-derivation-path"
+            hx-target="#submit-mnemonic" 
+            hx-swap="outerHTML"
         >
-        {{ if .recoveredNodeAddresses}}Update{{ else }}Submit{{ end }} Mnemonic
+            Submit Mnemonic
         </a>
     </div>
-
-    <!-- Confirm derivationPath based on node address -->
-    {{ if .recoveredNodeAddresses}}
-        <h3 style="text-align: center; padding-bottom: 1rem;">Pick the correct node address:</h3>
-    {{ end }}
-    {{range .recoveredNodeAddresses}}
-    <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 1rem; padding: 0.5rem;">
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; vertical-align: middle; margin-right: 1rem; font-size: 16px;">
-            <span>{{.Text}}: {{ .NodeAddress }}</span>
-        </div>
-        <a 
-            class="button-htmx-action"
-            hx-post="/minipools?page=1"
-            hx-vals="{{ .WalletData }}"
-            hx-include="#network-select, #rpc-input, #beaconchain-api-key-input"
-            hx-target="main" 
-            hx-swap="innerHTML"
-        >
-            Confirm Node Address
-        </a>
-    </div>
-    {{end}}
 
 </div>
+
+<!-- Toggle Script for Extended Settings -->
+<script>
+    document.getElementById("extended-settings-toggle").addEventListener("click", function () {
+        var container = document.getElementById("extended-settings-container");
+        var arrow = document.getElementById("toggle-arrow");
+        if (container.style.display === "none" || container.style.display === "") {
+            container.style.display = "block";
+            arrow.textContent = "▲";
+        } else {
+            container.style.display = "none";
+            arrow.textContent = "▼";
+        }
+    });
+</script>

@@ -29,7 +29,7 @@ var (
 type NodeRecoveryData struct {
 	Seed           []byte `json:"seed"`
 	DerivationPath string `json:"derivation_path"`
-	Index          uint   `json:"index"`
+	Index          uint64 `json:"index"`
 }
 
 type NodeKey struct {
@@ -39,9 +39,6 @@ type NodeKey struct {
 }
 
 func NewNodeKeyFromJson(jsonData string) (*NodeKey, error) {
-	type wrapper struct {
-		WalletData NodeRecoveryData `json:"WalletData"`
-	}
 	var nodeRecoveryData NodeRecoveryData
 	err := json.Unmarshal([]byte(jsonData), &nodeRecoveryData)
 	if err != nil {
@@ -64,7 +61,14 @@ func NewNodeKeyFromJson(jsonData string) (*NodeKey, error) {
 // derivationPath: the derivation path of the key, default DefaultNodeKeyPath
 func NewNodeKey(masterKey *hdkeychain.ExtendedKey, recoveryData NodeRecoveryData) (*NodeKey, error) {
 	// Get derived key
-	derivedKey, err := getNodeDerivedKey(masterKey, recoveryData.DerivationPath, recoveryData.Index)
+	var derivedKey *hdkeychain.ExtendedKey
+	var err error
+	if strings.Contains(recoveryData.DerivationPath, "%d") {
+		derivedKey, err = getNodeDerivedKey(masterKey, recoveryData.DerivationPath, recoveryData.Index)
+	} else {
+		// user set a custom derivation path without any placeholders for indexes (%d)
+		derivedKey, err = getNodeDerivedKeyFixedPath(masterKey, recoveryData.DerivationPath)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +115,7 @@ func (nk *NodeKey) DerivationPath() string {
 	return nk.recoveryData.DerivationPath
 }
 
-func (nk *NodeKey) Index() uint {
+func (nk *NodeKey) Index() uint64 {
 	return nk.recoveryData.Index
 }
 
@@ -132,9 +136,27 @@ func (nk *NodeKey) Json() (string, error) {
 	return string(data), nil
 }
 
-func getNodeDerivedKey(masterKey *hdkeychain.ExtendedKey, derivationPath string, index uint) (*hdkeychain.ExtendedKey, error) {
-	derivationPath = fmt.Sprintf(derivationPath, index)
+// based on getNodeDerivedKey, with fixed path, no index
+func getNodeDerivedKeyFixedPath(masterKey *hdkeychain.ExtendedKey, derivationPath string) (*hdkeychain.ExtendedKey, error) {
+	path, err := accounts.ParseDerivationPath(derivationPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid node key derivation path '%s': %w", derivationPath, err)
+	}
 
+	key := masterKey
+	for i, n := range path {
+		key, err = key.Derive(n)
+		if err != nil {
+			return nil, fmt.Errorf("invalid child key at depth %d: %w", i, err)
+		}
+	}
+
+	return key, nil
+}
+
+// see: https://github.com/rocket-pool/node-manager-core/blob/dfd914e4e77be54fbbf4ebb8e47d7578146bf429/node/wallet/local-wallet-manager.go#L274-L297
+func getNodeDerivedKey(masterKey *hdkeychain.ExtendedKey, derivationPath string, index uint64) (*hdkeychain.ExtendedKey, error) {
+	derivationPath = fmt.Sprintf(derivationPath, index)
 	path, err := accounts.ParseDerivationPath(derivationPath)
 	if err != nil {
 		return nil, fmt.Errorf("invalid node key derivation path '%s': %w", derivationPath, err)
@@ -162,7 +184,7 @@ type WalletInstance struct {
 	LedgerLiveNodeKey    *NodeKey
 }
 
-func NewWallet(mnemonic string, derivationPath string, index uint) (*WalletInstance, error) {
+func NewWallet(mnemonic string, derivationPath string, index uint64) (*WalletInstance, error) {
 	// normalize and validate mnemonic length
 	mnemonic = strings.ReplaceAll(mnemonic, ",", " ")
 	mnemonic = strings.TrimSpace(mnemonic)
@@ -195,7 +217,7 @@ func NewWallet(mnemonic string, derivationPath string, index uint) (*WalletInsta
 	return wi, nil
 }
 
-func (wi *WalletInstance) initNodeWallets(seed []byte, derivationPath string, index uint) error {
+func (wi *WalletInstance) initNodeWallets(seed []byte, derivationPath string, index uint64) error {
 	var err error
 	var firstError error
 
