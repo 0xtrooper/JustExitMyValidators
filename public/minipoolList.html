@@ -85,7 +85,7 @@
             <div>
                 <a 
                     class="button-htmx-action small"
-                    hx-post="/validator/signExit"
+                    hx-post="/content/validator/signExit"
                     hx-include="#network-select"
                     hx-vals='{"validatorIndex": "{{.Index}}", "privateKey": "{{.PrivateKey}}"}'
                     hx-target="#overlay"
@@ -107,7 +107,7 @@
         {{ if gt .PreviousPage 0 }}
             <button 
                 class="button-htmx-action small"
-                hx-post="/minipools?page={{ .PreviousPage }}"
+                hx-post="/content/minipools?page={{ .PreviousPage }}"
                 hx-vals="{{ .WalletData }}"
                 hx-include="#network-select"
                 hx-target="main" 
@@ -126,7 +126,7 @@
         {{ if or (lt .NextPage .TotalPages) (eq .NextPage .TotalPages) }}
             <button 
                 class="button-htmx-action small"
-                hx-post="/minipools?page={{ .NextPage }}"
+                hx-post="/content/minipools?page={{ .NextPage }}"
                 hx-vals="{{ .WalletData }}"
                 hx-include="#network-select"
                 hx-target="main" 

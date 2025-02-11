@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/donseba/go-htmx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	nmc_validator "github.com/rocket-pool/node-manager-core/node/validator"
@@ -34,13 +33,12 @@ const (
 
 	MAINNET_NETWORK_ID = 1
 	HOLESKY_NETWORK_ID = 17000
-
-	RPC_URL_MAINNET = "https://eth.llamarpc.com"
-	RPC_URL_HOLESKY = "https://holesky.gateway.tenderly.co"
 )
 
 var (
 	indexTemplate               = template.Must(template.ParseFiles("public/index.html"))
+	faqTemplate                 = template.Must(template.ParseFiles("public/faq.html"))
+	guideTemplate               = template.Must(template.ParseFiles("public/guide.html"))
 	errorTemplate               = template.Must(template.ParseFiles("public/errorBox.html"))
 	inputMnemonicTemplate       = template.Must(template.ParseFiles("public/mnemonic.html"))
 	minipoolsTemplate           = template.Must(template.ParseFiles("public/minipoolList.html"))
@@ -49,21 +47,61 @@ var (
 )
 
 type App struct {
-	logger *slog.Logger
-	htmx   *htmx.HTMX
+	logger        *slog.Logger
+	mainnetRpcUrl string
+	holskyRpcUrl  string
 }
 
-func NewApp(logger *slog.Logger) *App {
+func NewApp(logger *slog.Logger, mainnetRpcUrl, holskyRpcUrl string) *App {
 	return &App{
-		logger: logger.With("module", "app"),
-		htmx:   htmx.New(),
+		logger:        logger.With("module", "app"),
+		mainnetRpcUrl: mainnetRpcUrl,
+		holskyRpcUrl:  holskyRpcUrl,
 	}
 }
 
-func (a *App) Home(w http.ResponseWriter, r *http.Request) {
-	err := indexTemplate.Execute(w, nil)
+func (a *App) HomeFaq(w http.ResponseWriter, r *http.Request) {
+	err := renderMainPage(w, r, faqTemplate)
 	if err != nil {
-		a.logger.Error("error rendering", slog.String("error", err.Error()), slog.String("function", "Home"))
+		a.logger.Error("error rendering main faq template", slog.String("error", err.Error()))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) HomeGuide(w http.ResponseWriter, r *http.Request) {
+	err := renderMainPage(w, r, guideTemplate)
+	if err != nil {
+		a.logger.Error("error rendering main guide template", slog.String("error", err.Error()))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func renderMainPage(w http.ResponseWriter, r *http.Request, t *template.Template) error {
+	var content strings.Builder
+	err := t.Execute(&content, nil)
+	if err != nil {
+		return err
+	}
+
+	data := map[string]interface{}{
+		"content": template.HTML(content.String()),
+	}
+	return indexTemplate.Execute(w, data)
+}
+
+func (a *App) Faq(w http.ResponseWriter, r *http.Request) {
+	err := faqTemplate.Execute(w, nil)
+	if err != nil {
+		a.logger.Error("error rendering", slog.String("error", err.Error()), slog.String("function", "Faq"))
+	}
+}
+
+func (a *App) Guide(w http.ResponseWriter, r *http.Request) {
+	err := guideTemplate.Execute(w, nil)
+	if err != nil {
+		a.logger.Error("error rendering", slog.String("error", err.Error()), slog.String("function", "Guide"))
 	}
 }
 
@@ -263,7 +301,7 @@ func (a *App) GetMinipoolsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	logger.Debug("recived network", slog.String("network", r.FormValue("network")), slog.Uint64("networkId", networkId))
 
-	rpc, err := getRPC(logger, r.FormValue("rpc"), networkId)
+	rpc, err := a.getRPC(logger, r.FormValue("rpc"), networkId)
 	if err != nil {
 		logger.Error("error connecting to RPC", slog.String("error", err.Error()))
 		returnErrorBox(w, r, logger, err.Error())
@@ -628,15 +666,15 @@ func returnErrorBox(w http.ResponseWriter, r *http.Request, logger *slog.Logger,
 	}
 }
 
-func getRPC(logger *slog.Logger, customRPC string, networkId uint64) (*ethclient.Client, error) {
+func (a *App) getRPC(logger *slog.Logger, customRPC string, networkId uint64) (*ethclient.Client, error) {
 	var rpcUrl string
 	switch {
 	case customRPC != "":
 		rpcUrl = customRPC
 	case networkId == MAINNET_NETWORK_ID:
-		rpcUrl = RPC_URL_MAINNET
+		rpcUrl = a.mainnetRpcUrl
 	case networkId == HOLESKY_NETWORK_ID:
-		rpcUrl = RPC_URL_HOLESKY
+		rpcUrl = a.holskyRpcUrl
 	default:
 		return nil, errors.New("invalid network id")
 	}

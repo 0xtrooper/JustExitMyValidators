@@ -1,0 +1,90 @@
+<div class="guide">
+    <h2>Exit Process Guide</h2>
+    <ol>
+        <li>
+            <strong>Review the FAQ:</strong>
+            Before you begin, please carefully read our <a href="/faq" target="_blank">FAQ</a> for important details.
+        </li>
+        <li>
+            <strong>Set a Separate Withdrawal Address:</strong>
+            Ensure that your withdrawal address is different from your node address.
+        </li>
+        <li>
+            <strong>Enter Your Mnemonic:</strong>
+            Input your mnemonic phrase as shown in the example below.
+            <br>
+            <a href="/images/enterMnemonic.png" target="_blank">
+                <img src="/images/enterMnemonic.png" alt="Mnemonic Input Example" style="max-width:80%; max-height:80%; height:auto;">
+            </a>
+        </li>
+        <li>
+            <strong>Select the Correct Node Address:</strong>
+            Choose the correct node address. The interface displays the three most common derivation paths.
+            <br>
+            <a href="/images/confirmNodeAddress.png" target="_blank">
+                <img src="/images/confirmNodeAddress.png" alt="Node Address Selection" style="max-width:60%; max-height:60%; height:auto;">
+            </a>
+        </li>
+        <li>
+            <strong>Extended Settings:</strong>
+            <p> If your node address isn't displayed, click the "Extended Settings" message to reveal additional options. In this section, you can manually specify the derivation path. </p>
+            <p> The derivation path must start with <code>m/44/60</code> (or <code>m/44'/60'</code> for hardened derivation). For example, you might use <code>m/44/60/123/0/0</code> or <code>m/44'/60'/132'/0'/0</code>. Alternatively, you can include a placeholder for the index with a path like <code>m/44'/60'/123'/0'/%d</code> (where <code>%d</code> is replaced by the desired index). </p>
+            <br>
+            <p> You can also specify a custom index (the default is 0) if necessary. </p>
+        </li>
+        <li>
+            <strong>Load the Minipool List:</strong>
+            The minipool list will load shortly. Note that without a Beaconcha.in API key, this may take a few seconds.
+            <br>
+            <a href="/images/minipoolList.png" target="_blank">
+                <img src="/images/minipoolList.png" alt="Minipool List Loading" style="max-width:60%; max-height:60%; height:auto;">
+            </a>
+        </li>
+        <li>
+            <strong>Select Validators to Exit:</strong>
+            Choose the minipools/validators you wish to exit, then click the "Sign Exit" button to generate the exit message. A confirmation prompt will appear.
+            <br>
+            <a href="/images/confirmExit.png" target="_blank">
+                <img src="/images/confirmExit.png" alt="Sign Exit Confirmation" style="max-width:35%; max-height:35%; height:auto;">
+            </a>
+        </li>
+        <li>
+            <strong>Copy and Broadcast the Exit Message:</strong>
+            Click the button to copy your exit message, then follow the provided link to Beaconcha.in to broadcast it.
+            <br>
+            <a href="/images/submitExit.png" target="_blank">
+                <img src="/images/submitExit.png" alt="Broadcast Exit Message" style="max-width:40%; max-height:40%; height:auto;">
+            </a>
+         </li>
+        <li>
+            <strong>Submit the Message:</strong>
+            Paste the exit message and submit it. The broadcast process may take a few moments; once complete, the final status will display as "COMPLETED".
+            <br>
+            <a href="/images/broadcastCompleted.png" target="_blank">
+                <img src="/images/broadcastCompleted.png" alt="Exit Completed" style="max-width:40%; max-height:40%; height:auto;">
+            </a>
+        </li>
+    </ol>
+
+    
+    <div style="text-align: center; margin-top: 2rem;">
+        <a 
+            class="button-htmx-action"
+            hx-get="/content/mnemonic"
+            hx-target="main" 
+            hx-swap="innerHTML"
+        >
+            Start Exit Process
+        </a>
+        <a 
+            class="button-htmx-action"
+            hx-get="/content/faq"
+            hx-target="main" 
+            hx-swap="innerHTML"
+            hx-push-url="/faq"
+        >
+            FAQ
+        </a>
+    </div>
+</div>
+  

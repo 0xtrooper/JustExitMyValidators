@@ -1,0 +1,65 @@
+<div class="faq">    
+    <h1>Just Exit My Validators</h1>
+    <p style="margin-bottom: 2rem;">
+        Discover our Voluntary Validator Exit Tool. Learn how to recover your node address using your mnemonic, derive all associated validator keys, and generate a signed exit message—even without direct access to your smartnode.
+    </p>
+
+    <!-- FAQ items -->
+    <div class="faq-section">
+        <h2>1. What does this tool do?</h2>
+        <p>
+        This tool recovers your node address using your mnemonic phrase and then derives all the associated validator private keys. This functionality allows you to stop or disable a validator even if you don't have direct access to the smartnode.
+        </p>
+    </div>
+    <div class="faq-section">
+        <h2>2. When should I use this tool?</h2>
+        <p>
+            This tool is designed for situations where you <strong>want to exit all validators</strong> and do not have access to your synced smartnode. Because it compromises all validator private keys, it should only be used if you intend to exit every validator.
+        </p>
+    </div>        
+    <div class="faq-section">
+        <h2>3. Why do I only need a mnemonic, without node access?</h2>
+        <p>
+        The smartnode is built on a Hierarchical Deterministic (HD) wallet architecture. This means that all private keys are derived from a single mnemonic phrase. Essentially, your mnemonic acts as a master key, allowing you to recover every validator's private key without needing direct access to the node itself. For more details on HD wallets, check out <a href="https://medium.com/@blainemalone01/hd-wallets-why-hardened-derivation-matters-89efcdc71671">this article</a>.
+        </p>
+    </div>
+    <div class="faq-section">
+        <h2>4. Is it secure?</h2>
+        <p>
+        The tool requires access to your mnemonic, which means it gains full access to your node wallet and all associated validator keys. <strong>Only your withdrawal address remains safe</strong>. 
+        Additionally, to help mitigate risks, the tool is <a href="https://github.com/0xtrooper/JustExitMyValidators">open source</a> and designed to run locally, ensuring that your sensitive data remains on your own device.
+        </p>
+    </div>
+    <div class="faq-section">
+        <h2>5. How do I set a withdrawl address?</h2>
+        <p>
+        To enhance security, <strong>it is highly recommended that you set a primary withdrawal address if you haven't already done so</strong>. You can learn how to set one by following <a href="https://docs.rocketpool.net/guides/node/prepare-node#setting-your-primary-withdrawal-address">this guide</a>.
+        </p>
+    </div>
+    <div class="faq-section">
+        <h2>6. How does it integrate with beaconcha.in?</h2>
+        <p>
+        The tool generates a signed exit message that you can broadcast using beaconcha.in, allowing you to start your validator's exit.
+        </p>
+    </div>
+
+    <div style="text-align: center; margin-top: 2rem;">
+        <a 
+            class="button-htmx-action"
+            hx-get="/content/mnemonic"
+            hx-target="main" 
+            hx-swap="innerHTML"
+        >
+            Start Exit Process
+        </a>
+        <a 
+            class="button-htmx-action"
+            hx-get="/content/guide"
+            hx-target="main" 
+            hx-swap="innerHTML"
+            hx-push-url="/guide"
+        >
+            Guide
+        </a>
+    </div>
+</div>
