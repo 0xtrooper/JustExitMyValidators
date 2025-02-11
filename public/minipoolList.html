@@ -108,7 +108,7 @@
             <button 
                 class="button-htmx-action small"
                 hx-post="/content/minipools?page={{ .PreviousPage }}"
-                hx-vals="{{ .WalletData }}"
+                hx-vals="{{ .Data }}"
                 hx-include="#network-select"
                 hx-target="main" 
                 hx-swap="innerHTML"
@@ -127,7 +127,7 @@
             <button 
                 class="button-htmx-action small"
                 hx-post="/content/minipools?page={{ .NextPage }}"
-                hx-vals="{{ .WalletData }}"
+                hx-vals="{{ .Data }}"
                 hx-include="#network-select"
                 hx-target="main" 
                 hx-swap="innerHTML"

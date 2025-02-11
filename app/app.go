@@ -36,14 +36,19 @@ const (
 )
 
 var (
-	indexTemplate               = template.Must(template.ParseFiles("public/index.html"))
+	baseTemplate                = template.Must(template.ParseFiles("public/base.html"))
 	faqTemplate                 = template.Must(template.ParseFiles("public/faq.html"))
 	guideTemplate               = template.Must(template.ParseFiles("public/guide.html"))
 	errorTemplate               = template.Must(template.ParseFiles("public/errorBox.html"))
 	inputMnemonicTemplate       = template.Must(template.ParseFiles("public/mnemonic.html"))
+	inputWalletJsonTemplate     = template.Must(template.ParseFiles("public/walletJson.html"))
 	minipoolsTemplate           = template.Must(template.ParseFiles("public/minipoolList.html"))
 	confirmationOverlayTemplate = template.Must(template.ParseFiles("public/confirmationOverlay.html"))
 	confirmWalletTemplate       = template.Must(template.ParseFiles("public/confirmWallet.html"))
+
+	// regex to validate derivation path, allowed formats:
+	// m/44'/60'/.../.../... (with optional _'_ and optional _%d_)
+	derivationPathRegex = regexp.MustCompile("^m/44'?/60'?/(?:[0-9]+(?:'?)|%d)/(?:[0-9]+|%d)/(?:[0-9]+|%d)$")
 )
 
 type App struct {
@@ -78,6 +83,7 @@ func (a *App) HomeGuide(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// adds specific template context to the base template
 func renderMainPage(w http.ResponseWriter, r *http.Request, t *template.Template) error {
 	var content strings.Builder
 	err := t.Execute(&content, nil)
@@ -88,7 +94,7 @@ func renderMainPage(w http.ResponseWriter, r *http.Request, t *template.Template
 	data := map[string]interface{}{
 		"content": template.HTML(content.String()),
 	}
-	return indexTemplate.Execute(w, data)
+	return baseTemplate.Execute(w, data)
 }
 
 func (a *App) Faq(w http.ResponseWriter, r *http.Request) {
@@ -106,17 +112,99 @@ func (a *App) Guide(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) GetMnemonicInput(w http.ResponseWriter, r *http.Request) {
-	data := map[string]string{
-		"enteredMnemonic": "",
-	}
-	err := inputMnemonicTemplate.Execute(w, data)
+	err := inputMnemonicTemplate.Execute(w, nil)
 	if err != nil {
-		a.logger.Error("error rendering", slog.String("error", err.Error()), slog.String("function", "mnemonic"))
+		a.logger.Error("error rendering inputMnemonicTemplate", slog.String("error", err.Error()))
+	}
+}
+
+func (a *App) GetWalletJsonInput(w http.ResponseWriter, r *http.Request) {
+	err := inputWalletJsonTemplate.Execute(w, nil)
+	if err != nil {
+		a.logger.Error("error rendering inputWalletJsonTemplate", slog.String("error", err.Error()))
 	}
 }
 
 func (a *App) SubmitMnemonicHandler(w http.ResponseWriter, r *http.Request) {
 	logger := a.logger.With("function", "SubmitMnemonicHandler")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		logger.Error("error parsing form data", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Unable to parse form data")
+		return
+	}
+
+	// Extract the derivationPath from the form
+	derivationPath := r.FormValue("customDerivationPath")
+	if derivationPath != "" {
+		logger.Debug("recived custom derivationPath", slog.String("derivationPath", derivationPath))
+		if !derivationPathRegex.MatchString(derivationPath) {
+			logger.Error("error invalid derivation path", slog.String("derivationPath", derivationPath))
+			returnErrorBox(w, r, logger, "Invalid derivation path")
+			return
+		}
+	}
+
+	var index uint
+	if indexStr := r.FormValue("customWalletIndex"); indexStr == "" {
+		index = 0
+		logger.Debug("using default index 0")
+	} else {
+		indexInt, err := strconv.ParseUint(indexStr, 10, 64)
+		if err != nil {
+			logger.Error("error parsing index", slog.String("error", err.Error()))
+			returnErrorBox(w, r, logger, "Invalid index")
+			return
+		}
+		index = uint(indexInt)
+		logger.Debug("recived index", slog.Uint64("index", indexInt))
+	}
+
+	mnemonic := r.FormValue("mnemonic")
+	if mnemonic == "" {
+		logger.Error("error no mnemonic")
+		returnErrorBox(w, r, logger, "Mnemonic is required")
+		return
+	}
+	logger.Debug("recived mnemonic", slog.String("mnemonic", mnemonic))
+
+	// create possbile wallet instances
+	// custom derivation path: only one wallet is created
+	// default derivation path: 3 wallets are created using the common derivation paths
+	walletInstance, err := wallet.NewWalletManager(mnemonic, derivationPath, index)
+	if err != nil {
+		logger.Error("error creating wallet", slog.String("error", err.Error()))
+		if errors.Is(err, wallet.ErrInvalidWordCount) {
+			returnErrorBox(w, r, logger, wallet.ErrInvalidWordCount.Error())
+		} else {
+			returnErrorBox(w, r, logger, "Wrong mnemonic")
+		}
+		return
+	}
+
+	recoveredWalletData, err := walletInstance.RecoverWalletData()
+	if err != nil {
+		logger.Error("error recovering node addresses", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, err.Error())
+		return
+	}
+
+	data := map[string]interface{}{
+		"recoveredWalletData": recoveredWalletData,
+	}
+
+	err = confirmWalletTemplate.Execute(w, data)
+	if err != nil {
+		logger.Error("error rendering", slog.String("error", err.Error()))
+	}
+}
+
+func (a *App) SubmitWalletJsonHandler(w http.ResponseWriter, r *http.Request) {
+	logger := a.logger.With("function", "SubmitWalletJsonHandler")
 	// Ensure it's a POST request
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -130,114 +218,46 @@ func (a *App) SubmitMnemonicHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract the derivationPath from the form
-	derivationPath := r.FormValue("customDerivationPath")
-	if derivationPath != "" {
-		// m/44/60/123/0/0
-		// optional ': m/44'/60'/123'/0'/0'
-		// optional %d: m/44'/60'/123'/0'/%d
-		isValid := regexp.MustCompile("^m/44'?/60'?/(?:[0-9]+(?:'?)|%d)/(?:[0-9]+|%d)/(?:[0-9]+|%d)$")
-		if !isValid.MatchString(derivationPath) {
-			logger.Error("error invalid derivation path", slog.String("derivationPath", derivationPath))
-			returnErrorBox(w, r, logger, "Invalid derivation path")
-			return
-		}
-		logger.Debug("recived custom derivationPath", slog.String("derivationPath", derivationPath))
-	}
-
-	var index uint64
-	if indexStr := r.FormValue("customWalletIndex"); indexStr == "" {
-		index = 0
-		logger.Debug("using default index 0")
-	} else {
-		indexInt, err := strconv.ParseUint(indexStr, 10, 64)
-		if err != nil {
-			logger.Error("error parsing index", slog.String("error", err.Error()))
-			returnErrorBox(w, r, logger, "Invalid index")
-			return
-		}
-		index = indexInt
-		logger.Debug("recived index", slog.Uint64("index", index))
-	}
-
-	// Extract the mnemonic from the form
-	mnemonic := r.FormValue("mnemonic")
-	logger.Debug("recived mnemonic", slog.String("mnemonic", mnemonic))
-
-	if mnemonic == "" {
-		logger.Error("error no mnemonic")
-		returnErrorBox(w, r, logger, "Mnemonic is required")
+	// Extract the wallet json from the form
+	walletStr := r.FormValue("walletJson")
+	if walletStr == "" {
+		logger.Error("error no walletStr")
+		returnErrorBox(w, r, logger, "Wallet JSON is required")
 		return
 	}
 
-	walletInstance, err := wallet.NewWallet(mnemonic, derivationPath, index)
+	// Extract the password from the form
+	walletPassword := r.FormValue("walletPassword")
+	if walletPassword == "" {
+		logger.Error("error no walletPassword")
+		returnErrorBox(w, r, logger, "walletPassword is required")
+		return
+	}
+	logger.Debug("recived data", slog.String("walletPassword", walletPassword), slog.String("walletStr", walletStr))
+
+	nodeWallet, err := wallet.LoadWallet(walletStr, walletPassword)
 	if err != nil {
-		logger.Error("error creating wallet", slog.String("error", err.Error()))
-		if errors.Is(err, wallet.ErrInvalidWordCount) {
-			returnErrorBox(w, r, logger, wallet.ErrInvalidWordCount.Error())
-		} else {
-			returnErrorBox(w, r, logger, "Wrong mnemonic")
-		}
+		logger.Error("error loading wallet", slog.String("error", err.Error()))
+		returnErrorBox(w, r, logger, "Invalid wallet data")
 		return
 	}
 
-	var recoveredNodeAddresses []RecoveredNodeAddresses
-	if walletInstance.CustomKey != nil {
-		recoveryData, err := walletInstance.DefaultNodeKey.Json()
-		if err != nil {
-			logger.Warn("error getting default node key json", slog.String("error", err.Error()))
-			recoveryData = ""
-		}
-		recoveredNodeAddresses = append(recoveredNodeAddresses, RecoveredNodeAddresses{
-			Text:        "Recovered node address using custom derivation path",
-			NodeAddress: walletInstance.CustomKey.Address().Hex(),
-			WalletData:  recoveryData,
-		})
-		logger.Info("mnemonic correct",
-			slog.String("nodeAddressCustom", walletInstance.CustomKey.Address().Hex()),
-		)
-	} else {
-		recoveryData, err := walletInstance.DefaultNodeKey.Json()
-		if err != nil {
-			logger.Warn("error getting default node key json", slog.String("error", err.Error()))
-			recoveryData = ""
-		}
-		recoveredNodeAddresses = append(recoveredNodeAddresses, RecoveredNodeAddresses{
-			Text:        "Recovered node address using smart node derivation path",
-			NodeAddress: walletInstance.DefaultNodeKey.Address().Hex(),
-			WalletData:  recoveryData,
-		})
+	var recoveredWalletData []wallet.RecoveredWalletData
 
-		recoveryData, err = walletInstance.DefaultNodeKey.Json()
-		if err != nil {
-			logger.Warn("error getting default node key json", slog.String("error", err.Error()))
-			recoveryData = ""
-		}
-		recoveredNodeAddresses = append(recoveredNodeAddresses, RecoveredNodeAddresses{
-			Text:        "Recovered node address using leder derivation path",
-			NodeAddress: walletInstance.LedgerLiveNodeKey.Address().Hex(),
-			WalletData:  recoveryData,
-		})
-
-		recoveryData, err = walletInstance.DefaultNodeKey.Json()
-		if err != nil {
-			logger.Warn("error getting default node key json", slog.String("error", err.Error()))
-			recoveryData = ""
-		}
-		recoveredNodeAddresses = append(recoveredNodeAddresses, RecoveredNodeAddresses{
-			Text:        "Recovered node address using my ether wallet derivation path",
-			NodeAddress: walletInstance.MyEtherWalletNodeKey.Address().Hex(),
-			WalletData:  recoveryData,
-		})
-		logger.Info("mnemonic correct",
-			slog.String("nodeAddressDefault", walletInstance.DefaultNodeKey.Address().Hex()),
-			slog.String("nodeAddressLedger", walletInstance.LedgerLiveNodeKey.Address().Hex()),
-			slog.String("nodeAddressMyEtherWallet", walletInstance.MyEtherWalletNodeKey.Address().Hex()),
-		)
+	recoveryData, err := nodeWallet.SerializeDataWithPassword()
+	if err != nil {
+		logger.Warn("error getting default node key json", slog.String("error", err.Error()))
+		recoveryData = ""
 	}
+	recoveredWalletData = append(recoveredWalletData, wallet.RecoveredWalletData{
+		Text:        "Recovered node address",
+		NodeAddress: nodeWallet.Address().Hex(),
+		Data:        recoveryData,
+	})
+	logger.Info("wallet json correct", slog.String("nodeAddressCustom", nodeWallet.Address().Hex()))
 
 	data := map[string]interface{}{
-		"recoveredNodeAddresses": recoveredNodeAddresses,
+		"recoveredWalletData": recoveredWalletData,
 	}
 
 	err = confirmWalletTemplate.Execute(w, data)
@@ -256,18 +276,30 @@ func (a *App) GetMinipoolsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	walletJson := r.FormValue("WalletData")
-	logger.Debug("recived wallet data", slog.String("WalletData", walletJson))
+	walletStr := r.FormValue("WalletData")
+	if walletStr == "" {
+		logger.Error("error missing walletStr")
+		returnErrorBox(w, r, logger, "Wallet data is required")
+		return
+	}
 
-	nodeKey, err := wallet.NewNodeKeyFromJson(walletJson)
+	walletPassword := r.FormValue("WalletPassword")
+	if walletPassword == "" {
+		logger.Error("error missing walletPassword")
+		returnErrorBox(w, r, logger, "walletPassword is required")
+		return
+	}
+
+	logger.Debug("recived wallet data", slog.String("walletStr", walletStr), slog.String("walletPassword", walletPassword))
+
+	nodeWallet, err := wallet.LoadWallet(walletStr, walletPassword)
 	if err != nil {
 		logger.Error("error creating node key from json", slog.String("error", err.Error()))
 		returnErrorBox(w, r, logger, "Invalid wallet data")
 		return
 	}
-
-	nodeAddress := nodeKey.Address()
-	a.logger.Debug("recovered node wallet", slog.String("node address", nodeAddress.Hex()), slog.Duration("timeElapsed", time.Since(startTime)))
+	nodeAddress := nodeWallet.Address()
+	logger.Debug("recovered node wallet", slog.String("node address", nodeAddress.Hex()), slog.Duration("timeElapsed", time.Since(startTime)))
 
 	pageStr := r.FormValue("page")
 	var page uint64
@@ -321,7 +353,7 @@ func (a *App) GetMinipoolsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	logger.Debug("fetched validators", slog.Int("count", len(validators)), slog.Duration("timeElapsed", time.Since(startTime)))
 
-	err = nodeKey.RecoverValidatorPrivateKeys(validators)
+	err = nodeWallet.RecoverValidatorPrivateKeys(validators)
 	if err != nil {
 		logger.Error("error recovering validator private keys", slog.String("error", err.Error()))
 		returnErrorBox(w, r, logger, "Unable to recover validator private keys")
@@ -329,7 +361,7 @@ func (a *App) GetMinipoolsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	logger.Debug("recovered validator private keys", slog.Duration("timeElapsed", time.Since(startTime)))
 
-	outWalletJson, err := nodeKey.Json()
+	outWalletStr, err := nodeWallet.SerializeDataWithPassword()
 	if err != nil {
 		logger.Error("error getting wallet json", slog.String("error", err.Error()))
 		returnErrorBox(w, r, logger, "Unable to get wallet json")
@@ -344,7 +376,7 @@ func (a *App) GetMinipoolsHandler(w http.ResponseWriter, r *http.Request) {
 		"PreviousPage": page - 1,
 		"NextPage":     page + 1,
 		"TotalPages":   (totalCount + MinipoolPerPage - 1) / MinipoolPerPage,
-		"WalletData":   outWalletJson,
+		"Data":         outWalletStr,
 	}
 
 	err = minipoolsTemplate.Execute(w, data)

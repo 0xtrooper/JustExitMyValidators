@@ -1,0 +1,34 @@
+<div id="enter-wallet-json-body">
+    <h2 style="text-align: center;padding-bottom: 1rem;">Enter Your Wallet JSON</h2>
+
+    <div style="width: 80%; max-width: 60rem; margin: 0 auto;">
+        <form style="width: 100%; padding: 0; align-items: stretch;">
+            <textarea 
+                id="wallet-json"
+                name="walletJson"
+                style="width: 100%; min-width: 100%; max-width: 100%; box-sizing: border-box; padding: 0.5rem; border: 1px solid #ccc; height: 15rem;"
+                hx-ext="json-enc"
+                placeholder="Enter wallet JSON..."
+                required></textarea>
+            <input 
+                type="password"
+                id="wallet-password"
+                name="walletPassword"
+                style="width: 100%; min-width: 100%; max-width: 100%; box-sizing: border-box; padding: 0.5rem; border: 1px solid #ccc; margin-top: 1rem; display: block; height: 2rem;"
+                placeholder="Enter password..."
+                required>
+        </form>
+    </div>
+
+    <div id="submit-wallet-json" style="min-height: 80px; text-align: center; margin-top: 2rem;">        
+        <a 
+            class="button-htmx-action"
+            hx-post="/content/walletJson/submit"
+            hx-include="#wallet-json, #wallet-password"
+            hx-target="#submit-wallet-json" 
+            hx-swap="outerHTML"
+        >
+            Submit Wallet JSON
+        </a>
+    </div>
+</div>

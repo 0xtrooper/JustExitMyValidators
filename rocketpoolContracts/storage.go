@@ -18,7 +18,6 @@ const (
 )
 
 func GetContractByName(ctx context.Context, rpc *ethclient.Client, networkId uint64, contractName string) (common.Address, error) {
-
 	var rocketStorageAddressStr string
 	switch networkId {
 	case 1:

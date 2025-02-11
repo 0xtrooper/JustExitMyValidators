@@ -30,6 +30,8 @@ func setupRoutes(app *app.App) (*http.ServeMux, error) {
 	mux.Handle("/content/guide", http.HandlerFunc(app.Guide))
 	mux.Handle("/content/mnemonic", http.HandlerFunc(app.GetMnemonicInput))
 	mux.Handle("/content/mnemonic/submit", http.HandlerFunc(app.SubmitMnemonicHandler))
+	mux.Handle("/content/walletJson", http.HandlerFunc(app.GetWalletJsonInput))
+	mux.Handle("/content/walletJson/submit", http.HandlerFunc(app.SubmitWalletJsonHandler))
 	mux.Handle("/content/minipools", http.HandlerFunc(app.GetMinipoolsHandler))
 	mux.Handle("/content/validator/signExit", http.HandlerFunc(app.GetSignExitHandler))
 

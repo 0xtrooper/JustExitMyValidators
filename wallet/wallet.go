@@ -13,6 +13,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/tyler-smith/go-bip39"
+
+	"github.com/rocket-pool/node-manager-core/wallet"
+	eth2ks "github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4"
 )
 
 const (
@@ -22,226 +25,187 @@ const (
 	LedgerLiveNodeKeyPath    = "m/44'/60'/%d/0/0"
 )
 
-var (
-	ErrInvalidWordCount = errors.New("mnemonic must be 12, 15, 18, 21 or 24 words")
-)
-
-type NodeRecoveryData struct {
-	Seed           []byte `json:"seed"`
-	DerivationPath string `json:"derivation_path"`
-	Index          uint64 `json:"index"`
+type Wallet struct {
+	walletData *wallet.LocalWalletData
+	seed       []byte
+	password   string
+	privateKey *ecdsa.PrivateKey
+	publicKey  *ecdsa.PublicKey
 }
 
-type NodeKey struct {
-	recoveryData NodeRecoveryData
-	privateKey   *ecdsa.PrivateKey
-	publicKey    *ecdsa.PublicKey
-}
-
-func NewNodeKeyFromJson(jsonData string) (*NodeKey, error) {
-	var nodeRecoveryData NodeRecoveryData
-	err := json.Unmarshal([]byte(jsonData), &nodeRecoveryData)
+// loads wallet from JSON string
+func LoadWallet(jsonData string, password string) (*Wallet, error) {
+	walletRecoveryData := &wallet.LocalWalletData{}
+	err := json.Unmarshal([]byte(jsonData), walletRecoveryData)
 	if err != nil {
-		return nil, errors.New("could not unmarshal node recovery data from JSON")
+		return nil, errors.New("could not unmarshal wallet recovery data from JSON")
 	}
 
-	if nodeRecoveryData.Seed == nil {
-		return nil, errors.New("seed is required")
-	}
-
-	masterKey, err := hdkeychain.NewMaster(nodeRecoveryData.Seed, &chaincfg.MainNetParams)
-	if err != nil {
-		return nil, fmt.Errorf("could not create wallet master key: %s", err.Error())
-	}
-
-	return NewNodeKey(masterKey, nodeRecoveryData)
+	return LoadWalletFromJson(walletRecoveryData, password)
 }
 
-// index: the index of the key, default 0
-// derivationPath: the derivation path of the key, default DefaultNodeKeyPath
-func NewNodeKey(masterKey *hdkeychain.ExtendedKey, recoveryData NodeRecoveryData) (*NodeKey, error) {
-	// Get derived key
-	var derivedKey *hdkeychain.ExtendedKey
+// see: https://github.com/rocket-pool/node-manager-core/blob/dfd914e4e77be54fbbf4ebb8e47d7578146bf429/node/wallet/local-wallet-manager.go#L156-L202
+func LoadWalletFromJson(data *wallet.LocalWalletData, password string) (*Wallet, error) {
+	encryptor := eth2ks.New()
+	if data.Version != encryptor.Version() {
+		return nil, fmt.Errorf("invalid wallet keystore version %d, expected %d", data.Version, encryptor.Version())
+	}
+
+	if data.Name != encryptor.Name() {
+		return nil, fmt.Errorf("invalid wallet keystore name %s, expected %s", data.Name, encryptor.Name())
+	}
+
+	// Decrypt the seed
 	var err error
-	if strings.Contains(recoveryData.DerivationPath, "%d") {
-		derivedKey, err = getNodeDerivedKey(masterKey, recoveryData.DerivationPath, recoveryData.Index)
+	seed, err := encryptor.Decrypt(data.Crypto, password)
+	if err != nil {
+		return nil, fmt.Errorf("error decrypting wallet keystore: %w", err)
+	}
+
+	return NewWallet(data, seed, password)
+}
+
+// see: https://github.com/rocket-pool/node-manager-core/blob/dfd914e4e77be54fbbf4ebb8e47d7578146bf429/node/wallet/local-wallet-manager.go#L108-L135
+func InitializeWallet(derivationPath string, walletIndex uint, mnemonic string, password string) (*Wallet, error) {
+	if derivationPath == "" {
+		derivationPath = DefaultNodeKeyPath
+	}
+
+	// Generate the seed from the mnemonic
+	seed := bip39.NewSeed(mnemonic, "")
+
+	encryptor := eth2ks.New()
+	encryptedSeed, err := encryptor.Encrypt(seed, password)
+	if err != nil {
+		return nil, fmt.Errorf("error encrypting wallet seed: %w", err)
+	}
+
+	data := &wallet.LocalWalletData{
+		Crypto:         encryptedSeed,
+		Name:           encryptor.Name(),
+		Version:        encryptor.Version(),
+		DerivationPath: derivationPath,
+		WalletIndex:    walletIndex,
+	}
+
+	return NewWallet(data, seed, password)
+}
+
+// see: https://github.com/rocket-pool/node-manager-core/blob/dfd914e4e77be54fbbf4ebb8e47d7578146bf429/node/wallet/local-wallet-manager.go#L164-L202
+func NewWallet(data *wallet.LocalWalletData, seed []byte, password string) (*Wallet, error) {
+	// Create the master key
+	masterKey, err := hdkeychain.NewMaster(seed, &chaincfg.MainNetParams)
+	if err != nil {
+		return nil, fmt.Errorf("error creating wallet master key: %w", err)
+	}
+
+	// Handle an empty derivation path
+	if data.DerivationPath == "" {
+		data.DerivationPath = wallet.DefaultNodeKeyPath
+	}
+
+	// Get the derived key
+	var derivedKey *hdkeychain.ExtendedKey
+	var index uint
+	if strings.Contains(data.DerivationPath, "%d") {
+		derivedKey, index, err = getDerivedKey(masterKey, data.DerivationPath, data.WalletIndex)
 	} else {
-		// user set a custom derivation path without any placeholders for indexes (%d)
-		derivedKey, err = getNodeDerivedKeyFixedPath(masterKey, recoveryData.DerivationPath)
+		derivedKey, err = getDerivedKeyFixedPath(masterKey, data.DerivationPath)
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting node wallet derived key: %w", err)
 	}
+	data.WalletIndex = index // Update the index in case of the ErrInvalidChild issue
 
-	// Get private key
-	secpPrivateKey, err := derivedKey.ECPrivKey()
+	// Get the private key from it
+	privateKey, err := derivedKey.ECPrivKey()
 	if err != nil {
-		return nil, fmt.Errorf("could not get node private key: %w", err)
+		return nil, fmt.Errorf("error getting node wallet private key: %w", err)
 	}
-	privateKeyECDSA := secpPrivateKey.ToECDSA()
+	privateKeyECDSA := privateKey.ToECDSA()
 
-	// Get public key
-	publicKey := privateKeyECDSA.Public()
-	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
-	if !ok {
-		return nil, errors.New("could not get node public key")
-	}
-
-	nk := &NodeKey{
-		recoveryData: recoveryData,
-		privateKey:   privateKeyECDSA,
-		publicKey:    publicKeyECDSA,
+	w := &Wallet{
+		walletData: data,
+		seed:       seed,
+		password:   password,
+		privateKey: privateKeyECDSA,
+		publicKey:  privateKeyECDSA.Public().(*ecdsa.PublicKey),
 	}
 
-	return nk, nil
+	return w, nil
 }
 
-func (nk *NodeKey) GetPrivateKey() *ecdsa.PrivateKey {
-	return nk.privateKey
-}
-
-func (nk *NodeKey) GetPublicKey() *ecdsa.PublicKey {
-	return nk.publicKey
-}
-
-func (nk *NodeKey) Address() common.Address {
-	if nk.publicKey == nil {
+func (w *Wallet) Address() common.Address {
+	if w.publicKey == nil {
 		return common.Address{}
 	}
-	return crypto.PubkeyToAddress(*nk.publicKey)
+	return crypto.PubkeyToAddress(*w.publicKey)
 }
 
-func (nk *NodeKey) DerivationPath() string {
-	return nk.recoveryData.DerivationPath
-}
-
-func (nk *NodeKey) Index() uint64 {
-	return nk.recoveryData.Index
-}
-
-func (nk *NodeKey) Seed() []byte {
-	return nk.recoveryData.Seed
-}
-
-func (nk *NodeKey) Json() (string, error) {
-	type wrapper struct {
-		WalletData NodeRecoveryData `json:"WalletData"`
-	}
-
-	w := wrapper{WalletData: nk.recoveryData}
-	data, err := json.Marshal(w)
+func (w *Wallet) SerializeData() (string, error) {
+	bytes, err := json.Marshal(w.walletData)
 	if err != nil {
-		return "", fmt.Errorf("could not marshal node recovery data to JSON: %w", err)
+		return "", fmt.Errorf("error serializing wallet data: %w", err)
 	}
-	return string(data), nil
+	return string(bytes), nil
 }
 
-// based on getNodeDerivedKey, with fixed path, no index
-func getNodeDerivedKeyFixedPath(masterKey *hdkeychain.ExtendedKey, derivationPath string) (*hdkeychain.ExtendedKey, error) {
-	path, err := accounts.ParseDerivationPath(derivationPath)
+func (w *Wallet) SerializeDataWithPassword() (string, error) {
+	data := struct {
+		WalletData     *wallet.LocalWalletData
+		WalletPassword string
+	}{
+		WalletData:     w.walletData,
+		WalletPassword: w.password,
+	}
+
+	bytes, err := json.Marshal(data)
 	if err != nil {
-		return nil, fmt.Errorf("invalid node key derivation path '%s': %w", derivationPath, err)
+		return "", fmt.Errorf("error serializing wallet data: %w", err)
 	}
-
-	key := masterKey
-	for i, n := range path {
-		key, err = key.Derive(n)
-		if err != nil {
-			return nil, fmt.Errorf("invalid child key at depth %d: %w", i, err)
-		}
-	}
-
-	return key, nil
+	return string(bytes), nil
 }
 
 // see: https://github.com/rocket-pool/node-manager-core/blob/dfd914e4e77be54fbbf4ebb8e47d7578146bf429/node/wallet/local-wallet-manager.go#L274-L297
-func getNodeDerivedKey(masterKey *hdkeychain.ExtendedKey, derivationPath string, index uint64) (*hdkeychain.ExtendedKey, error) {
-	derivationPath = fmt.Sprintf(derivationPath, index)
-	path, err := accounts.ParseDerivationPath(derivationPath)
+func getDerivedKey(masterKey *hdkeychain.ExtendedKey, derivationPath string, index uint) (*hdkeychain.ExtendedKey, uint, error) {
+	formattedDerivationPath := fmt.Sprintf(derivationPath, index)
+
+	// Parse derivation path
+	path, err := accounts.ParseDerivationPath(formattedDerivationPath)
 	if err != nil {
-		return nil, fmt.Errorf("invalid node key derivation path '%s': %w", derivationPath, err)
+		return nil, 0, fmt.Errorf("invalid node key derivation path '%s': %w", formattedDerivationPath, err)
 	}
 
+	// Follow derivation path
 	key := masterKey
 	for i, n := range path {
 		key, err = key.Derive(n)
 		if err == hdkeychain.ErrInvalidChild {
-			return getNodeDerivedKey(masterKey, derivationPath, index+1)
+			// Start over with the next index
+			return getDerivedKey(masterKey, derivationPath, index+1)
 		} else if err != nil {
+			return nil, 0, fmt.Errorf("invalid child key at depth %d: %w", i, err)
+		}
+	}
+
+	// Return
+	return key, index, nil
+}
+
+// based on getNodeDerivedKey, with fixed path, no index
+func getDerivedKeyFixedPath(masterKey *hdkeychain.ExtendedKey, derivationPath string) (*hdkeychain.ExtendedKey, error) {
+	path, err := accounts.ParseDerivationPath(derivationPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid node key derivation path '%s': %w", derivationPath, err)
+	}
+
+	key := masterKey
+	for i, n := range path {
+		key, err = key.Derive(n)
+		if err != nil {
 			return nil, fmt.Errorf("invalid child key at depth %d: %w", i, err)
 		}
 	}
 
 	return key, nil
-}
-
-type WalletInstance struct {
-	masterKey *hdkeychain.ExtendedKey
-
-	CustomKey            *NodeKey
-	DefaultNodeKey       *NodeKey
-	MyEtherWalletNodeKey *NodeKey
-	LedgerLiveNodeKey    *NodeKey
-}
-
-func NewWallet(mnemonic string, derivationPath string, index uint64) (*WalletInstance, error) {
-	// normalize and validate mnemonic length
-	mnemonic = strings.ReplaceAll(mnemonic, ",", " ")
-	mnemonic = strings.TrimSpace(mnemonic)
-	numOfWords := len(strings.Fields(mnemonic))
-	if numOfWords%3 != 0 || numOfWords < 12 || numOfWords > 24 {
-		return nil, ErrInvalidWordCount
-	}
-
-	// check if mnemonic is valid
-	_, err := bip39.EntropyFromMnemonic(mnemonic)
-	if err != nil {
-		return nil, err
-	}
-
-	seed := bip39.NewSeed(mnemonic, "")
-
-	masterKey, err := hdkeychain.NewMaster(seed, &chaincfg.MainNetParams)
-	if err != nil {
-		return nil, fmt.Errorf("could not create wallet master key: %s", err.Error())
-	}
-
-	wi := &WalletInstance{
-		masterKey: masterKey,
-	}
-	err = wi.initNodeWallets(seed, derivationPath, index)
-	if err != nil {
-		return nil, errors.Join(errors.New("failed to initialize one or more node wallets"), err)
-	}
-
-	return wi, nil
-}
-
-func (wi *WalletInstance) initNodeWallets(seed []byte, derivationPath string, index uint64) error {
-	var err error
-	var firstError error
-
-	if derivationPath != "" {
-		wi.CustomKey, err = NewNodeKey(wi.masterKey, NodeRecoveryData{seed, derivationPath, index})
-		if err != nil {
-			firstError = fmt.Errorf("failed to initialize custom key: %w", err)
-		}
-	}
-
-	wi.DefaultNodeKey, err = NewNodeKey(wi.masterKey, NodeRecoveryData{seed, DefaultNodeKeyPath, index})
-	if err != nil && firstError == nil {
-		firstError = fmt.Errorf("failed to initialize default node key: %w", err)
-	}
-
-	wi.MyEtherWalletNodeKey, err = NewNodeKey(wi.masterKey, NodeRecoveryData{seed, MyEtherWalletNodeKeyPath, index})
-	if err != nil && firstError == nil {
-		firstError = fmt.Errorf("failed to initialize MyEtherWallet node key: %w", err)
-	}
-
-	wi.LedgerLiveNodeKey, err = NewNodeKey(wi.masterKey, NodeRecoveryData{seed, LedgerLiveNodeKeyPath, index})
-	if err != nil && firstError == nil {
-		firstError = fmt.Errorf("failed to initialize LedgerLive node key: %w", err)
-	}
-
-	return firstError
 }

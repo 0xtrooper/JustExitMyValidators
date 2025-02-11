@@ -45,7 +45,7 @@ type ValidatorKey struct {
 }
 
 // based on: https://github.com/rocket-pool/smartnode/blob/9429cbafac15bc08d27da3b7413a138cb99f6287/shared/utils/wallet/recover-keys.go#L31-L105
-func (nk *NodeKey) RecoverValidatorPrivateKeys(validators []ValidatorData) error {
+func (w *Wallet) RecoverValidatorPrivateKeys(validators []ValidatorData) error {
 	validatorsToRecover := make(map[string]int)
 	for i, validator := range validators {
 		validatorsToRecover[validator.PubKey] = i
@@ -64,7 +64,7 @@ func (nk *NodeKey) RecoverValidatorPrivateKeys(validators []ValidatorData) error
 		}
 
 		// Get the keys for this bucket
-		keys, err := nk.GetValidatorKeys(bucketStart, bucketEnd-bucketStart)
+		keys, err := w.GetValidatorKeys(bucketStart, bucketEnd-bucketStart)
 		if err != nil {
 			return err
 		}
@@ -92,10 +92,10 @@ func (nk *NodeKey) RecoverValidatorPrivateKeys(validators []ValidatorData) error
 
 // Recover a set of validator keys by their public key
 // see: https://github.com/rocket-pool/smartnode/blob/0729581e82f46755593d426ab6cdb508ebf7b82b/rocketpool-daemon/common/validator/validator-manager.go#L130-L153
-func (nk *NodeKey) GetValidatorKeys(startIndex uint64, length uint64) ([]ValidatorKey, error) {
+func (w *Wallet) GetValidatorKeys(startIndex uint64, length uint64) ([]ValidatorKey, error) {
 	validatorKeys := make([]ValidatorKey, 0, length)
 	for index := startIndex; index < startIndex+length; index++ {
-		key, path, err := nk.getValidatorPrivateKey(index)
+		key, path, err := w.getValidatorPrivateKey(index)
 		if err != nil {
 			return nil, fmt.Errorf("error getting validator key for index %d: %w", index, err)
 		}
@@ -124,7 +124,7 @@ func initializeBLS() error {
 }
 
 // see: https://github.com/rocket-pool/smartnode/blob/9429cbafac15bc08d27da3b7413a138cb99f6287/shared/services/wallet/validator.go#L301-L328
-func (nk *NodeKey) getValidatorPrivateKey(index uint64) (*eth2types.BLSPrivateKey, string, error) {
+func (w *Wallet) getValidatorPrivateKey(index uint64) (*eth2types.BLSPrivateKey, string, error) {
 	// Get derivation path
 	derivationPath := fmt.Sprintf(ValidatorKeyPath, index)
 
@@ -134,9 +134,9 @@ func (nk *NodeKey) getValidatorPrivateKey(index uint64) (*eth2types.BLSPrivateKe
 	}
 
 	// Get private key
-	privateKey, err := eth2util.PrivateKeyFromSeedAndPath(nk.recoveryData.Seed, derivationPath)
+	privateKey, err := eth2util.PrivateKeyFromSeedAndPath(w.seed, derivationPath)
 	if err != nil {
-		return nil, "", fmt.Errorf("Could not get validator %d private key: %w", index, err)
+		return nil, "", fmt.Errorf("could not get validator %d private key: %w", index, err)
 	}
 
 	// Return

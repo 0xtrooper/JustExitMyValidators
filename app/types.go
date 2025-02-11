@@ -1,11 +1,5 @@
 package app
 
-type RecoveredNodeAddresses struct {
-	Text        string
-	NodeAddress string
-	WalletData  string
-}
-
 type BeaconchaValidatorStatusResponse struct {
 	Status string `json:"status"`
 	Data   []struct {

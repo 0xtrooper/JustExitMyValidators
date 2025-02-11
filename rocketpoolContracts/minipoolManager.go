@@ -64,6 +64,7 @@ func NewMinipoolManager(ctx context.Context, rpc *ethclient.Client, logger *slog
 	}, nil
 }
 
+// get minipool count for a given node address
 func (mm *MinipoolManagerInstance) GetMinipoolCount(ctx context.Context, nodeAddress common.Address) (uint64, error) {
 	opts := &bind.CallOpts{
 		Context: ctx,
@@ -77,8 +78,8 @@ func (mm *MinipoolManagerInstance) GetMinipoolCount(ctx context.Context, nodeAdd
 	return count.Uint64(), nil
 }
 
+// get minipool address and pubkey for a given node address
 func (mm *MinipoolManagerInstance) GetMinipools(ctx context.Context, nodeAddress common.Address, start, end uint64) ([]Minipool, error) {
-
 	minipoolAddresses := make([]common.Address, end-start)
 	for indexToFetch := start; indexToFetch < end; indexToFetch++ {
 		indexToStore := indexToFetch - start
